@@ -5,6 +5,7 @@ import {
   setDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { getInventory, type Vehicle } from "./inventory";
@@ -145,4 +146,8 @@ export async function toggleVehiclePublished(
   current: boolean,
 ): Promise<void> {
   await updateDoc(doc(db, COLLECTION, id), { publicado: !current });
+}
+
+export async function deleteVehicle(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTION, id));
 }

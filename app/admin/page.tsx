@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { ArrowLeft, Lock, LogOut, Menu, Plus, X } from "lucide-react";
+import { ArrowLeft, Lock, LogOut, Menu, Plus, Trash2, X } from "lucide-react";
 import { Wordmark } from "@/components/wordmark";
 import { AddInventoryModal } from "@/components/admin/add-inventory-modal";
 import { LeadsKanban } from "@/components/admin/leads-kanban";
@@ -14,6 +14,7 @@ import {
   createVehicle,
   updateVehicle,
   toggleVehiclePublished,
+  deleteVehicle,
   type AdminVehicle,
   type NewVehicleInput,
 } from "@/lib/inventory-store";
@@ -504,6 +505,7 @@ function InventoryPanel() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState<AdminVehicle | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [armedDeleteId, setArmedDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -556,6 +558,14 @@ function InventoryPanel() {
       .then(() => getAdminVehicles())
       .then(setRows)
       .catch((err) => console.error("No se pudo crear el vehículo:", err));
+  }
+
+  function removeVehicle(id: string) {
+    setRows((prev) => prev.filter((r) => r.id !== id));
+    setArmedDeleteId(null);
+    deleteVehicle(id).catch((err) =>
+      console.error("No se pudo eliminar la unidad:", err),
+    );
   }
 
   return (
@@ -647,13 +657,42 @@ function InventoryPanel() {
                     </button>
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setEditing(v)}
-                      className="rounded-full border border-neutral-200 px-3 py-1.5 text-[11px] font-medium text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
-                    >
-                      Editar
-                    </button>
+                    {armedDeleteId === v.id ? (
+                      <span className="inline-flex items-center gap-2 text-[12px] font-medium">
+                        <button
+                          type="button"
+                          onClick={() => setArmedDeleteId(null)}
+                          className="text-neutral-400 hover:text-neutral-700"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeVehicle(v.id)}
+                          className="text-red-hi hover:underline"
+                        >
+                          Eliminar
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditing(v)}
+                          className="rounded-full border border-neutral-200 px-3 py-1.5 text-[11px] font-medium text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setArmedDeleteId(v.id)}
+                          aria-label={`Eliminar ${v.marca} ${v.modelo}`}
+                          className="rounded-full border border-neutral-200 p-2 text-neutral-400 transition-colors hover:border-red/30 hover:bg-red/5 hover:text-red-hi"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -40,6 +40,7 @@ export function Nav() {
             buildMessage={(name, phone) =>
               `Hola RS Motors, mi nombre es ${name} (Tel: ${phone}) y quería hacer una consulta.`
             }
+            source="Nav"
             buttonLabel="WhatsApp"
             buttonClassName="inline-flex items-center gap-2 rounded-full bg-red px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-red-hi"
           />

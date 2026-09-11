@@ -10,6 +10,7 @@ import { FINANCE, monthlyPayment } from "@/lib/finance";
 import { galleryFor } from "@/lib/gallery";
 import { highlightsFor, narrativeFor } from "@/lib/narrative";
 import { waLink } from "@/lib/site";
+import { saveLead } from "@/lib/leads-store";
 import { VehicleGallery } from "./vehicle-gallery";
 import { WhatsappCaptureButton } from "./whatsapp-capture-button";
 
@@ -183,6 +184,7 @@ export function VehicleDetail({ vehicle }: { vehicle: Vehicle }) {
               `Hola RS Motors, mi nombre es ${name} (Tel: ${phone}) y quiero consultar por el ${title} ${vehicle.version} ${vehicle.anio} (${vehicle.id}). ¿Sigue disponible?`
             }
             context={`sobre el ${title}`}
+            source={`Ficha de vehículo — ${title}`}
             buttonClassName="inline-flex w-full items-center justify-center gap-2 rounded-full bg-red px-8 py-4 text-[13px] font-semibold uppercase tracking-[0.1em] text-white transition-colors hover:bg-red-hi sm:w-auto"
           />
 
@@ -227,6 +229,13 @@ function ContactForm({ vehicle, title }: { vehicle: Vehicle; title: string }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          saveLead({
+            name: form.nombre || "Sin nombre",
+            phone: form.contacto,
+            context: `sobre el ${title}`,
+            message,
+            source: `Formulario de contacto — ${title}`,
+          });
           window.open(waLink(message), "_blank", "noopener,noreferrer");
         }}
         className="mt-4 flex flex-col gap-4"

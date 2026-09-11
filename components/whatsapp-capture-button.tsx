@@ -2,29 +2,38 @@
 
 import { useState } from "react";
 import { waLink } from "@/lib/site";
+import { saveLead } from "@/lib/leads-store";
 import { WhatsappGlyph } from "./whatsapp-glyph";
 
 /**
  * A WhatsApp CTA that captures name + phone first, so the lead is legible
- * before the visitor lands in chat — the seam for later logging that lead to
- * a CRM/dashboard once one exists (see lib/inventory.ts's getInventory() for
- * the same "swap point" pattern this app uses for a future backend).
+ * before the visitor lands in chat. Every submission is saved via
+ * lib/leads-store.ts, which the admin panel's Contactos tab reads on load —
+ * see that file for the (localStorage-only, no real backend) caveat.
  *
- * Shared by the site nav and the vehicle detail page; only the message and
- * button styling differ per call site.
+ * Used everywhere the site offers a WhatsApp CTA — nav, vehicle detail,
+ * the financing calculator, the trade-in tool — so no WhatsApp button skips
+ * capture. The one exception is the inline contact forms (vehicle detail
+ * and the homepage Contacto section), which already ask for name/phone
+ * directly and call saveLead themselves without this modal.
  */
 export function WhatsappCaptureButton({
   buildMessage,
   context,
+  source,
   buttonClassName,
   buttonLabel = "Consultar por WhatsApp",
+  disabled = false,
 }: {
   /** Builds the final WhatsApp message from the captured name + phone. */
   buildMessage: (name: string, phone: string) => string;
   /** Optional trailing context shown in the modal, e.g. "sobre el Volkswagen Golf GTI". */
   context?: string;
+  /** Where this button lives, e.g. "Ficha de vehículo" — shown in the admin dashboard. */
+  source: string;
   buttonClassName: string;
   buttonLabel?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -35,7 +44,15 @@ export function WhatsappCaptureButton({
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={buttonClassName}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+        className={
+          buttonClassName +
+          (disabled ? " cursor-not-allowed opacity-40" : "")
+        }
+      >
         <WhatsappGlyph size={15} />
         {buttonLabel}
       </button>
@@ -62,12 +79,18 @@ export function WhatsappCaptureButton({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                window.open(
-                  waLink(buildMessage(name, phone)),
-                  "_blank",
-                  "noopener,noreferrer",
-                );
+                const message = buildMessage(name, phone);
+                saveLead({
+                  name,
+                  phone,
+                  context: context ?? "Consulta general",
+                  message,
+                  source,
+                });
+                window.open(waLink(message), "_blank", "noopener,noreferrer");
                 setOpen(false);
+                setName("");
+                setPhone("");
               }}
               className="mt-6 flex flex-col gap-4"
             >

@@ -19,10 +19,12 @@ import { Odometer } from "@/components/odometer";
 import { VehicleCard } from "@/components/vehicle-card";
 import { SalesAgentWidget } from "@/components/sales-agent-widget";
 import { WhatsappGlyph } from "@/components/whatsapp-glyph";
+import { WhatsappCaptureButton } from "@/components/whatsapp-capture-button";
 import { getCategories, getInventory } from "@/lib/inventory";
 import { fmtInt, fmtUSD } from "@/lib/format";
 import { FINANCE } from "@/lib/finance";
 import { SITE, waLink } from "@/lib/site";
+import { saveLead } from "@/lib/leads-store";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 
 /* ------------------------------------------------------------------ *
@@ -626,15 +628,15 @@ function Tools() {
                     />
                   </div>
 
-                  <a
-                    href={waLink(financeMessage)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-red px-6 py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-red-hi"
-                  >
-                    <WhatsappGlyph size={16} />
-                    Consultar esta cuota
-                  </a>
+                  <WhatsappCaptureButton
+                    buildMessage={(name, phone) =>
+                      `Hola RS Motors, mi nombre es ${name} (Tel: ${phone}). ${financeMessage}`
+                    }
+                    context="sobre financiación"
+                    source="Calculadora de financiación"
+                    buttonLabel="Consultar esta cuota"
+                    buttonClassName="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-red px-6 py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-red-hi"
+                  />
 
                   <p className="mt-5 text-[11px] leading-relaxed text-ink-faint">
                     Los montos de las cuotas y las tasas de interés presentadas
@@ -717,21 +719,16 @@ function Tools() {
                     </label>
                   ))}
                 </div>
-                <a
-                  href={tradeReady ? waLink(tradeMessage) : undefined}
-                  aria-disabled={!tradeReady}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={
-                    "mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-[15px] font-semibold transition-colors " +
-                    (tradeReady
-                      ? "bg-red text-white hover:bg-red-hi"
-                      : "pointer-events-none bg-surface text-ink-faint")
+                <WhatsappCaptureButton
+                  buildMessage={(name, phone) =>
+                    `Hola RS Motors, mi nombre es ${name} (Tel: ${phone}). ${tradeMessage}`
                   }
-                >
-                  <WhatsappGlyph size={16} />
-                  Pedir tasación
-                </a>
+                  context="sobre una tasación de permuta"
+                  source="Formulario de permuta"
+                  disabled={!tradeReady}
+                  buttonLabel="Pedir tasación"
+                  buttonClassName="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-red px-6 py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-red-hi"
+                />
               </div>
             </div>
           )}
@@ -906,6 +903,13 @@ function Contact() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            saveLead({
+              name: form.nombre || "Sin nombre",
+              phone: form.contacto,
+              context: "Consulta general",
+              message,
+              source: "Formulario de contacto — Inicio",
+            });
             window.open(waLink(message), "_blank", "noopener,noreferrer");
           }}
           className="rounded-[28px] bg-surface p-7 shadow-float sm:p-10"

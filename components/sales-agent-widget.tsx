@@ -3,17 +3,17 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowRight, Check, X } from "lucide-react";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
+import { saveLead } from "@/lib/leads-store";
 
 /**
  * Floating lead-qualification widget — a scripted, multi-step chat that
  * narrows a visitor down to vehicle type / budget / urgency / permuta before
  * asking for contact details. Auto-opens shortly after the page loads.
  *
- * Like WhatsappCaptureButton, this is a UX pattern, not a real integration:
- * the "qualified lead" at the end is only logged to the console, not sent to
- * any CRM or database. Wire handleFinalSubmit up to a real backend (see
- * lib/inventory.ts's getInventory() for the same swap-point pattern) before
- * relying on it to actually reach anyone.
+ * Like WhatsappCaptureButton, the qualified lead is saved via
+ * lib/leads-store.ts (localStorage, no real backend — see that file) so it
+ * shows up in the admin panel's Contactos tab, same as every other capture
+ * point on the site.
  */
 
 type LeadData = {
@@ -102,8 +102,22 @@ export function SalesAgentWidget() {
     if (visit.includes("esta semana") || visit.includes("hoy")) urgencyScore += 2;
     urgencyScore = Math.min(urgencyScore, 10);
 
-    // Not a real CRM write — see file header.
-    console.log("Lead calificado (demo):", { ...lead, urgencyScore });
+    saveLead({
+      name: lead.name || "Sin nombre",
+      phone: lead.phone,
+      context: lead.vehicleType || "Consulta general",
+      message: [
+        `Interés: ${lead.vehicleType}`,
+        `Presupuesto: ${lead.budget}`,
+        `Urgencia: ${lead.urgency} (score ${urgencyScore}/10)`,
+        `Permuta: ${lead.tradeIn}`,
+        `Visita: ${lead.visitTiming}`,
+        lead.email ? `Email: ${lead.email}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      source: "Asesor virtual",
+    });
     setStep(6);
   }
 

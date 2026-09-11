@@ -2,13 +2,15 @@
 
 import { useState, type FormEvent } from "react";
 import { Plus, Trash2, X } from "lucide-react";
+import { getSavedLeads, type CapturedLead } from "@/lib/leads-store";
 
 /**
  * Contactos / leads kanban for the admin panel — same UI-shell-only status
- * as the rest of app/admin/page.tsx. Stage moves, deletes and notes all
- * live in local React state; nothing here is persisted or sent anywhere.
- * Wire it up to a real backend the same way lib/inventory.ts's
- * getInventory() is meant to be swapped for a live query.
+ * as the rest of app/admin/page.tsx. Real WhatsApp/contact-form submissions
+ * from the public site land here too (via lib/leads-store.ts's localStorage
+ * bridge, seeded into "Nuevo" on load) alongside the demo seed leads. Stage
+ * moves, deletes and notes from here on live only in local React state —
+ * none of it writes back to leads-store or anywhere else.
  */
 
 export type Stage = "nuevo" | "contactado" | "seguimiento" | "cerrado";
@@ -153,6 +155,26 @@ const stageSelect =
 const field =
   "w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[13px] text-neutral-900 outline-none transition-colors placeholder:text-neutral-400 focus:border-red focus:bg-white";
 
+function capturedToLead(c: CapturedLead): Lead {
+  const date = new Date(c.createdAt);
+  const dateLabel = Number.isNaN(date.getTime())
+    ? "Recién"
+    : date.toLocaleString("es-UY", { dateStyle: "short", timeStyle: "short" });
+  return {
+    id: c.id,
+    name: c.name,
+    interest: c.context,
+    phone: c.phone || "No registrado",
+    email: "No registrado",
+    stage: "nuevo",
+    source: c.source,
+    nextStep: "Responder consulta",
+    due: "Hoy",
+    urgencyScore: 7,
+    comments: [{ id: `${c.id}-0`, date: dateLabel, text: c.message }],
+  };
+}
+
 const EMPTY_NEW_LEAD = {
   name: "",
   interest: "",
@@ -164,7 +186,10 @@ const EMPTY_NEW_LEAD = {
 };
 
 export function LeadsKanban() {
-  const [leads, setLeads] = useState<Lead[]>(SEED_LEADS);
+  const [leads, setLeads] = useState<Lead[]>(() => [
+    ...getSavedLeads().map(capturedToLead),
+    ...SEED_LEADS,
+  ]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [armedDeleteId, setArmedDeleteId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -233,7 +258,8 @@ export function LeadsKanban() {
             Contactos y leads
           </h1>
           <p className="mt-1 text-[13px] text-neutral-400">
-            Pipeline de demostración — mové etapas y agregá notas; nada se
+            Los WhatsApp y formularios del sitio (en este navegador) caen acá
+            en Nuevo. Movés etapas y agregás notas, pero nada de eso se
             guarda todavía.
           </p>
         </div>

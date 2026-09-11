@@ -6,12 +6,16 @@ import { X, Check } from "lucide-react";
 /**
  * "Agregar vehículo" modal for the admin inventory tab.
  *
- * Same UI-shell-only status as the rest of app/admin/page.tsx: submitting
- * either tab below doesn't persist anything (no database exists yet) and
- * doesn't upload any photo. The one piece of this flow with a real backend
- * already built is /api/vehicles/photos (sharp watermarking, see
- * lib/watermark.ts) — wire the photo grid up to it once vehicle records
- * have somewhere real to live.
+ * The photo grid is real: each slot POSTs to /api/vehicles/photos, which
+ * watermarks the image server-side (sharp, see lib/watermark.ts) and saves
+ * it under public/images/vehicles/uploads/ — the thumbnail shown is that
+ * actual watermarked file, not a raw local preview.
+ *
+ * Everything else is still UI-shell only, matching the rest of
+ * app/admin/page.tsx: there's no database, so the vehicle record itself
+ * (and the uploaded photo's association with it) isn't persisted anywhere —
+ * saving the form hands the data to the in-memory inventory list in
+ * app/admin/page.tsx and nothing survives a refresh.
  */
 
 type TabKey = "manual" | "excel";
@@ -100,13 +104,16 @@ export function AddInventoryModal({
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [photos, setPhotos] = useState<Record<number, File>>({});
   const [previews, setPreviews] = useState<Record<number, string>>({});
+  const [uploading, setUploading] = useState<Record<number, boolean>>({});
   const [photoErrors, setPhotoErrors] = useState<Record<number, string>>({});
   const [excelFile, setExcelFile] = useState<File | null>(null);
 
   if (!open) return null;
 
   function revokeAllPreviews() {
-    Object.values(previews).forEach((url) => URL.revokeObjectURL(url));
+    Object.values(previews).forEach(
+      (url) => url.startsWith("blob:") && URL.revokeObjectURL(url),
+    );
   }
 
   function reset() {
@@ -114,12 +121,20 @@ export function AddInventoryModal({
     setForm(EMPTY_FORM);
     setPhotos({});
     setPreviews({});
+    setUploading({});
     setPhotoErrors({});
     setExcelFile(null);
     setTab("manual");
   }
 
-  function handlePhotoChange(slotId: number, file: File | undefined) {
+  function setPreview(slotId: number, url: string) {
+    setPreviews((prev) => {
+      if (prev[slotId]?.startsWith("blob:")) URL.revokeObjectURL(prev[slotId]);
+      return { ...prev, [slotId]: url };
+    });
+  }
+
+  async function handlePhotoChange(slotId: number, file: File | undefined) {
     if (!file) return;
     if (file.size > MAX_PHOTO_BYTES) {
       setPhotoErrors((prev) => ({ ...prev, [slotId]: "Supera los 5 MB." }));
@@ -131,10 +146,29 @@ export function AddInventoryModal({
       return next;
     });
     setPhotos((prev) => ({ ...prev, [slotId]: file }));
-    setPreviews((prev) => {
-      if (prev[slotId]) URL.revokeObjectURL(prev[slotId]);
-      return { ...prev, [slotId]: URL.createObjectURL(file) };
-    });
+    // Instant local preview while the real upload (and watermark) runs.
+    setPreview(slotId, URL.createObjectURL(file));
+
+    setUploading((prev) => ({ ...prev, [slotId]: true }));
+    try {
+      const body = new FormData();
+      body.append("photo", file);
+      const res = await fetch("/api/vehicles/photos", {
+        method: "POST",
+        body,
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Error al subir la foto.");
+      // Swap the raw local preview for the real, watermarked file.
+      setPreview(slotId, json.url);
+    } catch (err) {
+      setPhotoErrors((prev) => ({
+        ...prev,
+        [slotId]: err instanceof Error ? err.message : "Error al subir la foto.",
+      }));
+    } finally {
+      setUploading((prev) => ({ ...prev, [slotId]: false }));
+    }
   }
 
   function close() {
@@ -361,20 +395,26 @@ export function AddInventoryModal({
                 {PHOTO_SLOTS.map((slot) => {
                   const loaded = photos[slot.id];
                   const preview = previews[slot.id];
+                  const isUploading = uploading[slot.id];
                   const error = photoErrors[slot.id];
                   return (
                     <div
                       key={slot.id}
                       className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-3"
                     >
-                      <div className="size-12 shrink-0 overflow-hidden rounded-xl bg-neutral-200">
+                      <div className="relative size-12 shrink-0 overflow-hidden rounded-xl bg-neutral-200">
                         {preview && (
-                          // eslint-disable-next-line @next/next/no-img-element -- local object URL preview, not an optimizable remote asset
+                          // eslint-disable-next-line @next/next/no-img-element -- transient local/uploaded preview, not an optimizable static asset
                           <img
                             src={preview}
                             alt=""
                             className="size-full object-cover"
                           />
+                        )}
+                        {isUploading && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                            <span className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                          </div>
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -399,6 +439,7 @@ export function AddInventoryModal({
                           accept="image/*"
                           capture="environment"
                           id={`photo-slot-${slot.id}`}
+                          disabled={isUploading}
                           onChange={(e) =>
                             handlePhotoChange(slot.id, e.target.files?.[0])
                           }
@@ -408,13 +449,15 @@ export function AddInventoryModal({
                           htmlFor={`photo-slot-${slot.id}`}
                           className={
                             "inline-flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.04em] transition-colors " +
-                            (loaded
-                              ? "bg-red text-white"
-                              : "border border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-100")
+                            (isUploading
+                              ? "cursor-wait border border-neutral-300 bg-white text-neutral-400"
+                              : loaded
+                                ? "bg-red text-white"
+                                : "border border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-100")
                           }
                         >
-                          {loaded && <Check className="size-3" />}
-                          {loaded ? "Cambiar" : "Subir foto"}
+                          {!isUploading && loaded && <Check className="size-3" />}
+                          {isUploading ? "Subiendo…" : loaded ? "Cambiar" : "Subir foto"}
                         </label>
                       </div>
                     </div>
@@ -422,9 +465,10 @@ export function AddInventoryModal({
                 })}
               </div>
               <p className="text-[11px] text-neutral-400">
-                Se guardan al conectar /api/vehicles/photos a esta unidad.
-                Tocar &quot;Subir foto&quot; en el celular abre la cámara
-                directamente.
+                Cada foto se sube y se marca con agua (sharp, centrada, apenas
+                visible) al instante — la miniatura ya muestra el resultado
+                final. Tocar &quot;Subir foto&quot; en el celular abre la
+                cámara directamente.
               </p>
             </div>
 

@@ -3,17 +3,18 @@ import { notFound } from "next/navigation";
 import { Nav } from "@/components/site-nav";
 import { Footer } from "@/components/site-footer";
 import { VehicleDetail } from "@/components/vehicle-detail";
-import { getInventory } from "@/lib/inventory";
+import { getPublicVehicles } from "@/lib/vehicles-public";
 import { fmtInt, fmtUSD } from "@/lib/format";
+
+// Real inventory changes via the admin panel at any time, so this page is
+// re-fetched from Firestore rather than frozen at build time.
+export const revalidate = 60;
 
 type Params = { slug: string };
 
-function findVehicle(slug: string) {
-  return getInventory().find((v) => v.slug === slug);
-}
-
-export async function generateStaticParams() {
-  return getInventory().map((v) => ({ slug: v.slug }));
+async function findVehicle(slug: string) {
+  const vehicles = await getPublicVehicles();
+  return vehicles.find((v) => v.slug === slug);
 }
 
 export async function generateMetadata({
@@ -22,7 +23,7 @@ export async function generateMetadata({
   params: Promise<Params>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const vehicle = findVehicle(slug);
+  const vehicle = await findVehicle(slug);
   if (!vehicle) return { title: "Unidad no encontrada — RS Motors" };
 
   const title = `${vehicle.marca} ${vehicle.modelo} ${vehicle.anio} — RS Motors`;
@@ -38,7 +39,7 @@ export default async function VehiclePage({
   params: Promise<Params>;
 }) {
   const { slug } = await params;
-  const vehicle = findVehicle(slug);
+  const vehicle = await findVehicle(slug);
   if (!vehicle) notFound();
 
   return (

@@ -20,7 +20,8 @@ import { VehicleCard } from "@/components/vehicle-card";
 import { SalesAgentWidget } from "@/components/sales-agent-widget";
 import { WhatsappGlyph } from "@/components/whatsapp-glyph";
 import { WhatsappCaptureButton } from "@/components/whatsapp-capture-button";
-import { getCategories, getInventory } from "@/lib/inventory";
+import { getCategories, type Vehicle } from "@/lib/inventory";
+import { getPublicVehicles } from "@/lib/vehicles-public";
 import { fmtInt, fmtUSD } from "@/lib/format";
 import { FINANCE } from "@/lib/finance";
 import { SITE, waLink } from "@/lib/site";
@@ -28,16 +29,9 @@ import { saveLead } from "@/lib/leads-store";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 import { useReveal, revealClassName } from "@/lib/use-reveal";
 
-/* ------------------------------------------------------------------ *
- *  Static data — the seam for a live backend (Supabase, an API, …).
- *  Read once at module scope; swap getInventory() for a fetch/hook.
- * ------------------------------------------------------------------ */
-const ALL_VEHICLES = getInventory();
 const CATEGORIES = getCategories();
 const PER_PAGE = 12;
-const MARCAS = Array.from(new Set(ALL_VEHICLES.map((v) => v.marca))).sort();
-const MAX_PRICE = Math.max(...ALL_VEHICLES.map((v) => v.precioUSD));
-const MIN_PRICE = Math.min(...ALL_VEHICLES.map((v) => v.precioUSD));
+const EMPTY_VEHICLES: Vehicle[] = [];
 /** Illustrative TNA tiers the visitor can pick in the calculator. */
 const RATE_OPTIONS = [5.97, 6.97, 8.97, 10.97];
 
@@ -148,12 +142,46 @@ function Hero() {
 function Seleccion() {
   const sectionRef = useRef<HTMLElement>(null);
   const visible = useReveal(sectionRef);
+  const [vehicles, setVehicles] = useState<Vehicle[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("todos");
   const [marca, setMarca] = useState<string>("todas");
   const [transmision, setTransmision] = useState<string>("todas");
-  const [maxPrice, setMaxPrice] = useState(MAX_PRICE);
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPublicVehicles()
+      .then((data) => {
+        if (cancelled) return;
+        setVehicles(data);
+        setMaxPrice(data.length ? Math.max(...data.map((v) => v.precioUSD)) : 0);
+      })
+      .catch((err) => {
+        console.error("No se pudo cargar la selección:", err);
+        if (!cancelled) setLoadError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const ALL_VEHICLES = vehicles ?? EMPTY_VEHICLES;
+  const MARCAS = useMemo(
+    () => Array.from(new Set(ALL_VEHICLES.map((v) => v.marca))).sort(),
+    [ALL_VEHICLES],
+  );
+  const MAX_PRICE = useMemo(
+    () => (ALL_VEHICLES.length ? Math.max(...ALL_VEHICLES.map((v) => v.precioUSD)) : 0),
+    [ALL_VEHICLES],
+  );
+  const MIN_PRICE = useMemo(
+    () => (ALL_VEHICLES.length ? Math.min(...ALL_VEHICLES.map((v) => v.precioUSD)) : 0),
+    [ALL_VEHICLES],
+  );
+  const effectiveMaxPrice = maxPrice ?? MAX_PRICE;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -161,13 +189,13 @@ function Seleccion() {
       if (category !== "todos" && v.categoria !== category) return false;
       if (marca !== "todas" && v.marca !== marca) return false;
       if (transmision !== "todas" && v.transmision !== transmision) return false;
-      if (v.precioUSD > maxPrice) return false;
+      if (v.precioUSD > effectiveMaxPrice) return false;
       if (!q) return true;
       return `${v.marca} ${v.modelo} ${v.version} ${v.anio} ${v.categoria}`
         .toLowerCase()
         .includes(q);
     });
-  }, [query, category, marca, transmision, maxPrice]);
+  }, [ALL_VEHICLES, query, category, marca, transmision, effectiveMaxPrice]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const currentPage = Math.min(page, totalPages);
@@ -283,7 +311,7 @@ function Seleccion() {
               min={MIN_PRICE}
               max={MAX_PRICE}
               step={1000}
-              value={maxPrice}
+              value={effectiveMaxPrice}
               onChange={(e) => {
                 setMaxPrice(Number(e.target.value));
                 resetToFirstPage();
@@ -292,13 +320,32 @@ function Seleccion() {
               aria-label="Precio máximo"
             />
             <span className="tnum text-[13px] font-semibold text-ink">
-              {fmtUSD(maxPrice)}
+              {fmtUSD(effectiveMaxPrice)}
             </span>
           </label>
         </div>
 
         {/* grid */}
-        {pageItems.length > 0 ? (
+        {vehicles === null ? (
+          <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div
+                key={i}
+                className="aspect-[4/3] animate-pulse rounded-[22px] bg-surface"
+              />
+            ))}
+          </div>
+        ) : loadError ? (
+          <div className="mt-10 rounded-[26px] bg-surface px-6 py-20 text-center shadow-soft">
+            <p className="text-[20px] font-semibold tracking-[-0.02em] text-ink">
+              No pudimos cargar la selección
+            </p>
+            <p className="mx-auto mt-2 max-w-[42ch] text-[14px] leading-relaxed text-ink-dim">
+              Probá recargar la página en un momento, o escribinos por
+              WhatsApp y te pasamos el catálogo directamente.
+            </p>
+          </div>
+        ) : pageItems.length > 0 ? (
           <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {pageItems.map((v, i) => (
               <VehicleCard
@@ -308,6 +355,16 @@ function Seleccion() {
                 showMeta={false}
               />
             ))}
+          </div>
+        ) : ALL_VEHICLES.length === 0 ? (
+          <div className="mt-10 rounded-[26px] bg-surface px-6 py-20 text-center shadow-soft">
+            <p className="text-[20px] font-semibold tracking-[-0.02em] text-ink">
+              Estamos renovando la selección
+            </p>
+            <p className="mx-auto mt-2 max-w-[42ch] text-[14px] leading-relaxed text-ink-dim">
+              En este momento no tenemos unidades publicadas. Escribinos por
+              WhatsApp y te contamos qué está por entrar.
+            </p>
           </div>
         ) : (
           <div className="mt-10 rounded-[26px] bg-surface px-6 py-20 text-center shadow-soft">
@@ -325,7 +382,7 @@ function Seleccion() {
                 setCategory("todos");
                 setMarca("todas");
                 setTransmision("todas");
-                setMaxPrice(MAX_PRICE);
+                setMaxPrice(null);
                 resetToFirstPage();
               }}
               className="mt-6 inline-flex items-center gap-2 rounded-full bg-surface-2 px-5 py-2.5 text-[13px] font-semibold text-ink transition-colors hover:bg-surface-hi"
@@ -375,10 +432,6 @@ function Seleccion() {
           </div>
         )}
 
-        <p className="mt-10 text-center text-[12px] text-ink-faint">
-          Selección de demostración · fotos ilustrativas. Las unidades reales se
-          cargan desde la base de datos de RS Motors.
-        </p>
       </div>
     </section>
   );
@@ -762,6 +815,44 @@ function Tools() {
 }
 
 /* ------------------------------------------------------------------ *
+ *  Dealership — boxed static photo of the real RS Motors location.
+ *  Drop the photo at public/images/dealer.jpg (any size — it's cropped to
+ *  fill the box via object-cover) and it appears here automatically.
+ * ------------------------------------------------------------------ */
+function Dealership() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const visible = useReveal(sectionRef);
+  return (
+    <section
+      ref={sectionRef}
+      className={"px-5 sm:px-8 " + revealClassName(visible)}
+    >
+      <div className="mx-auto max-w-[1320px]">
+        <div className="relative h-[75vh] overflow-hidden rounded-[32px] shadow-float">
+          <Image
+            src="/images/dealer.jpg"
+            alt="Local de RS Motors en Maldonado"
+            fill
+            sizes="(max-width: 1320px) 100vw, 1320px"
+            className="object-cover"
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/5 to-transparent" />
+          <div className="absolute bottom-0 left-0 p-7 sm:p-10">
+            <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-yellow-400 [text-shadow:0_1px_10px_rgba(0,0,0,0.6)]">
+              <MapPin className="size-3.5 shrink-0" />
+              {SITE.address}
+            </div>
+            <p className="mt-2 max-w-[38ch] text-[clamp(1.6rem,3vw,2.4rem)] font-semibold leading-[1.1] tracking-[-0.02em] text-white [text-shadow:0_2px_20px_rgba(0,0,0,0.5)]">
+              Nuestro local en Maldonado
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  *  About
  * ------------------------------------------------------------------ */
 function About() {
@@ -1016,6 +1107,7 @@ export default function Page() {
         <Seleccion />
         <Tools />
         <About />
+        <Dealership />
         <Contact />
       </main>
       <Footer />

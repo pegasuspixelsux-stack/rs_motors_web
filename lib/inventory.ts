@@ -36,6 +36,10 @@ export interface Vehicle {
   inspeccionado: boolean;
   imagen: string;
   destacado?: boolean;
+  /** Real photo URLs (Firebase Storage) for units added through the admin
+   * panel. When present, the detail-page gallery uses these instead of the
+   * demo stock-photo pool. */
+  photos?: string[];
 }
 
 export const STATUS_LABEL: Record<VehicleStatus, string> = {

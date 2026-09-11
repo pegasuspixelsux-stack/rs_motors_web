@@ -47,3 +47,6 @@ next-env.d.ts
 # uploaded listing photos (local dev storage — not committed)
 /public/images/vehicles/uploads/*
 !/public/images/vehicles/uploads/.gitkeep
+
+.vercel
+.env*

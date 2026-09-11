@@ -18,6 +18,8 @@ const PHOTO_POOL = [
 ];
 
 export function galleryFor(vehicle: Vehicle, count = 4): string[] {
+  if (vehicle.photos && vehicle.photos.length > 0) return vehicle.photos;
+
   const others = PHOTO_POOL.filter((p) => p !== vehicle.imagen);
   const seed = [...vehicle.id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
   const offset = seed % others.length;

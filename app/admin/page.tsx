@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { ArrowLeft, Lock, LogOut, Menu, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, LogOut, Menu, Plus, Trash2, X } from "lucide-react";
 import { Wordmark } from "@/components/wordmark";
 import { AddInventoryModal } from "@/components/admin/add-inventory-modal";
+import { EditInventoryModal } from "@/components/admin/edit-inventory-modal";
 import { LeadsKanban } from "@/components/admin/leads-kanban";
 import { UsersPanel } from "@/components/admin/users-panel";
-import { STATUS_LABEL, type Vehicle } from "@/lib/inventory";
+import { STATUS_LABEL } from "@/lib/inventory";
 import {
   getAdminVehicles,
   createVehicle,
@@ -19,7 +20,6 @@ import {
   type NewVehicleInput,
 } from "@/lib/inventory-store";
 import { getLeads, STAGE_LABEL, type Lead } from "@/lib/leads-store";
-import { SALESMEN } from "@/lib/salesmen";
 import { fmtInt, fmtUSD } from "@/lib/format";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 import { auth } from "@/lib/firebase";
@@ -495,10 +495,6 @@ export default function AdminPage() {
   );
 }
 
-const editField =
-  "w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[13px] text-neutral-900 outline-none transition-colors placeholder:text-neutral-400 focus:border-red focus:bg-white";
-const editLabel = "block text-[12px] font-medium text-neutral-500";
-
 function InventoryPanel() {
   const [rows, setRows] = useState<AdminVehicle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -540,11 +536,8 @@ function InventoryPanel() {
     );
   }
 
-  function saveEdit(e: FormEvent) {
-    e.preventDefault();
-    if (!editing) return;
-    setRows((prev) => prev.map((r) => (r.id === editing.id ? editing : r)));
-    const { id, ...patch } = editing;
+  function saveEdit(id: string, patch: Partial<AdminVehicle>) {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
     updateVehicle(id, patch).catch((err) =>
       console.error("No se pudo guardar la unidad:", err),
     );
@@ -703,192 +696,12 @@ function InventoryPanel() {
       )}
 
       {editing && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
-          onClick={() => setEditing(null)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-            className="my-8 w-full max-w-lg rounded-[28px] border border-neutral-200 bg-white p-8 shadow-xl"
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-neutral-100 pb-6">
-              <div>
-                <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-neutral-900">
-                  Editar unidad
-                </h2>
-                <p className="mt-1 text-[13px] text-neutral-400">
-                  {editing.marca} {editing.modelo}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditing(null)}
-                className="rounded-full p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
-                aria-label="Cerrar"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-
-            <form onSubmit={saveEdit} className="mt-6 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className={editLabel}>Marca</span>
-                  <input
-                    required
-                    value={editing.marca}
-                    onChange={(e) =>
-                      setEditing({ ...editing, marca: e.target.value })
-                    }
-                    className={editField + " mt-1.5"}
-                  />
-                </label>
-                <label className="block">
-                  <span className={editLabel}>Modelo</span>
-                  <input
-                    required
-                    value={editing.modelo}
-                    onChange={(e) =>
-                      setEditing({ ...editing, modelo: e.target.value })
-                    }
-                    className={editField + " mt-1.5"}
-                  />
-                </label>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className={editLabel}>Año</span>
-                  <input
-                    required
-                    type="number"
-                    value={editing.anio}
-                    onChange={(e) =>
-                      setEditing({ ...editing, anio: Number(e.target.value) })
-                    }
-                    className={editField + " mt-1.5"}
-                  />
-                </label>
-                <label className="block">
-                  <span className={editLabel}>Precio (USD)</span>
-                  <input
-                    required
-                    type="number"
-                    value={editing.precioUSD}
-                    onChange={(e) =>
-                      setEditing({
-                        ...editing,
-                        precioUSD: Number(e.target.value),
-                      })
-                    }
-                    className={editField + " mt-1.5"}
-                  />
-                </label>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className={editLabel}>Kilometraje</span>
-                  <input
-                    required
-                    type="number"
-                    value={editing.km}
-                    onChange={(e) =>
-                      setEditing({ ...editing, km: Number(e.target.value) })
-                    }
-                    className={editField + " mt-1.5"}
-                  />
-                </label>
-                <label className="block">
-                  <span className={editLabel}>Transmisión</span>
-                  <select
-                    value={editing.transmision}
-                    onChange={(e) =>
-                      setEditing({
-                        ...editing,
-                        transmision: e.target.value as Vehicle["transmision"],
-                      })
-                    }
-                    className={editField + " mt-1.5"}
-                  >
-                    <option value="Manual">Manual</option>
-                    <option value="Automática">Automática</option>
-                  </select>
-                </label>
-              </div>
-
-              <label className="block">
-                <span className={editLabel}>Asesor asignado</span>
-                <select
-                  value={editing.assignedSalesman}
-                  onChange={(e) =>
-                    setEditing({
-                      ...editing,
-                      assignedSalesman: e.target.value,
-                    })
-                  }
-                  className={editField + " mt-1.5"}
-                >
-                  {SALESMEN.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className={editLabel}>Descripción</span>
-                <textarea
-                  rows={3}
-                  value={editing.description}
-                  onChange={(e) =>
-                    setEditing({ ...editing, description: e.target.value })
-                  }
-                  placeholder="Estado general, procedencia, historial..."
-                  className={editField + " mt-1.5"}
-                />
-              </label>
-
-              <label className="block">
-                <span className={editLabel}>
-                  Equipamiento (separado por comas)
-                </span>
-                <input
-                  value={editing.features}
-                  onChange={(e) =>
-                    setEditing({ ...editing, features: e.target.value })
-                  }
-                  placeholder="Ej. Cuero, Techo panorámico"
-                  className={editField + " mt-1.5"}
-                />
-              </label>
-
-              <div className="flex items-center gap-2 rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3 text-[12px] text-neutral-500">
-                <Lock className="size-3.5 shrink-0" />
-                La eliminación de unidades está bloqueada desde este panel.
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditing(null)}
-                  className="rounded-full bg-neutral-100 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-neutral-600 transition-colors hover:bg-neutral-200"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-full bg-red px-8 py-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-white transition-colors hover:bg-red-hi"
-                >
-                  Guardar cambios
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <EditInventoryModal
+          key={editing.id}
+          vehicle={editing}
+          onClose={() => setEditing(null)}
+          onSave={saveEdit}
+        />
       )}
 
       <AddInventoryModal

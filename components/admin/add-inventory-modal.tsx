@@ -2,20 +2,22 @@
 
 import { useState } from "react";
 import { X, Check } from "lucide-react";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "@/lib/firebase";
+import { SALESMEN } from "@/lib/salesmen";
+import type { NewVehicleInput } from "@/lib/inventory-store";
 
 /**
  * "Agregar vehículo" modal for the admin inventory tab.
  *
- * The photo grid is real: each slot POSTs to /api/vehicles/photos, which
- * watermarks the image server-side (sharp, see lib/watermark.ts) and saves
- * it under public/images/vehicles/uploads/ — the thumbnail shown is that
- * actual watermarked file, not a raw local preview.
+ * The photo grid is real: each slot POSTs to /api/vehicles/photos (sharp
+ * watermarking, see lib/watermark.ts), then uploads the watermarked bytes
+ * straight to Firebase Storage from the client — the thumbnail shown is
+ * the actual hosted, watermarked file's download URL, not a local preview.
  *
- * Everything else is still UI-shell only, matching the rest of
- * app/admin/page.tsx: there's no database, so the vehicle record itself
- * (and the uploaded photo's association with it) isn't persisted anywhere —
- * saving the form hands the data to the in-memory inventory list in
- * app/admin/page.tsx and nothing survives a refresh.
+ * Submitting the form writes a real Firestore document via
+ * lib/inventory-store.ts — see that file and lib/firebase.ts for the
+ * current no-real-auth/open-rules state this all runs under.
  */
 
 type TabKey = "manual" | "excel";
@@ -32,27 +34,6 @@ type FormData = {
   features: string;
   assignedSalesman: string;
 };
-
-/** What a saved manual entry hands back to the caller — enough to build a full Vehicle row. */
-export type NewVehicleInput = {
-  marca: string;
-  modelo: string;
-  anio: number;
-  precioUSD: number;
-  km: number;
-  transmision: "Manual" | "Automática";
-  tagline: string;
-  description: string;
-  features: string;
-  assignedSalesman: string;
-};
-
-export const SALESMEN = [
-  "Martín Rodríguez",
-  "Sofía Valdés",
-  "Ignacio Silva",
-  "Carlos Ferreira",
-];
 
 const EMPTY_FORM: FormData = {
   brand: "",
@@ -157,10 +138,17 @@ export function AddInventoryModal({
         method: "POST",
         body,
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Error al subir la foto.");
-      // Swap the raw local preview for the real, watermarked file.
-      setPreview(slotId, json.url);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? "Error al marcar la foto con agua.");
+      }
+      const watermarked = await res.blob();
+      const path = `inventory/${Date.now()}-slot${slotId}-${file.name}`.replace(/\s+/g, "-");
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, watermarked, { contentType: file.type });
+      const downloadURL = await getDownloadURL(storageRef);
+      // Swap the raw local preview for the real, hosted, watermarked file.
+      setPreview(slotId, downloadURL);
     } catch (err) {
       setPhotoErrors((prev) => ({
         ...prev,
@@ -177,6 +165,7 @@ export function AddInventoryModal({
   }
 
   const photoCount = Object.keys(photos).length;
+  const anyUploading = Object.values(uploading).some(Boolean);
 
   return (
     <div
@@ -235,6 +224,10 @@ export function AddInventoryModal({
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              if (anyUploading) return;
+              const photoUrls = PHOTO_SLOTS.map((s) => previews[s.id]).filter(
+                (url): url is string => Boolean(url) && url.startsWith("http"),
+              );
               onSave({
                 marca: form.brand.trim(),
                 modelo: form.model.trim(),
@@ -246,6 +239,7 @@ export function AddInventoryModal({
                 description: form.description.trim(),
                 features: form.features.trim(),
                 assignedSalesman: form.assignedSalesman,
+                photos: photoUrls,
               });
               close();
             }}
@@ -482,9 +476,10 @@ export function AddInventoryModal({
               </button>
               <button
                 type="submit"
-                className="rounded-full bg-red px-8 py-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-white transition-colors hover:bg-red-hi"
+                disabled={anyUploading}
+                className="rounded-full bg-red px-8 py-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-white transition-colors hover:bg-red-hi disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Guardar vehículo
+                {anyUploading ? "Subiendo fotos…" : "Guardar vehículo"}
               </button>
             </div>
           </form>

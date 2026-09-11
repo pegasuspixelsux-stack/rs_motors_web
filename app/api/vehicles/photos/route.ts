@@ -1,24 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { watermarkImage } from "@/lib/watermark";
 
 /**
- * Listing-photo upload endpoint. Watermarks every incoming photo (see
- * lib/watermark.ts) before it's saved — the actual "process on upload"
- * pipeline the rest of the app doesn't have a UI for yet.
- *
- * Storage is the local `public/images/vehicles/uploads/` folder for now,
- * mirroring how the rest of the demo inventory is served. Swap the write
- * step below for real object storage (Vercel Blob, S3, Supabase Storage…)
- * once one is wired up — see PRODUCT.md's "Capabilities and Constraints".
+ * Listing-photo watermarking endpoint. Applies the RS Motors mark (see
+ * lib/watermark.ts) to an incoming photo and hands the watermarked bytes
+ * straight back — it doesn't persist anything itself. The caller (the
+ * admin's AddInventoryModal) uploads those bytes to Firebase Storage via
+ * the client SDK, since Storage only needs the public web config, not a
+ * service-account credential this route would otherwise require.
  *
  * sharp is a native module, so this route must run on the Node runtime,
  * never Edge.
  */
 export const runtime = "nodejs";
 
-const UPLOAD_DIR = path.join(process.cwd(), "public/images/vehicles/uploads");
 const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -48,12 +43,8 @@ export async function POST(req: NextRequest) {
   const original = Buffer.from(await file.arrayBuffer());
   const watermarked = await watermarkImage(original);
 
-  await mkdir(UPLOAD_DIR, { recursive: true });
-  const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "-");
-  const filename = `${Date.now()}-${safeName}`;
-  await writeFile(path.join(UPLOAD_DIR, filename), watermarked);
-
-  return NextResponse.json({
-    url: `/images/vehicles/uploads/${filename}`,
+  return new NextResponse(new Uint8Array(watermarked), {
+    status: 200,
+    headers: { "Content-Type": file.type },
   });
 }

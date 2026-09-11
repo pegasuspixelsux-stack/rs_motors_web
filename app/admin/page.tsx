@@ -1,34 +1,38 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { ArrowLeft, Lock, LogOut, Menu, Plus, X } from "lucide-react";
 import { Wordmark } from "@/components/wordmark";
-import {
-  AddInventoryModal,
-  SALESMEN,
-  type NewVehicleInput,
-} from "@/components/admin/add-inventory-modal";
-import { LeadsKanban, SEED_LEADS, STAGE_LABEL } from "@/components/admin/leads-kanban";
+import { AddInventoryModal } from "@/components/admin/add-inventory-modal";
+import { LeadsKanban } from "@/components/admin/leads-kanban";
 import { UsersPanel } from "@/components/admin/users-panel";
-import { getInventory, STATUS_LABEL, type Vehicle } from "@/lib/inventory";
+import { STATUS_LABEL, type Vehicle } from "@/lib/inventory";
+import {
+  getAdminVehicles,
+  createVehicle,
+  updateVehicle,
+  toggleVehiclePublished,
+  type AdminVehicle,
+  type NewVehicleInput,
+} from "@/lib/inventory-store";
+import { getLeads, STAGE_LABEL, type Lead } from "@/lib/leads-store";
+import { SALESMEN } from "@/lib/salesmen";
 import { fmtInt, fmtUSD } from "@/lib/format";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
-import { DEMO_EMAIL, DEMO_PASSWORD } from "@/lib/admin-auth";
+import { auth } from "@/lib/firebase";
+import { DEMO_EMAIL } from "@/lib/admin-auth";
 
 /**
  * Internal admin UI shell — reachable from the site footer, but not part of
- * the public marketing experience. This is a visual prototype only:
- *   - The login checks a hardcoded demo email/password client-side. It is
- *     NOT real authentication — anyone can read it in the page source.
- *   - Every dashboard number is placeholder demo data.
- * Before this protects anything real it needs:
- *   1. A real auth provider gating this route (session/cookie check on the
- *      server, not client state) — see the marketplace skill for
- *      provisioning one.
- *   2. A real backend for inventory/leads/users, swapped in the same way
- *      lib/inventory.ts's getInventory() is meant to be swapped for a
- *      live query.
+ * the public marketing experience.
+ *   - Login is real Firebase Auth (email/password) now.
+ *   - Inventario, Contactos and Usuarios are real Firestore data
+ *     (lib/inventory-store.ts, lib/leads-store.ts, lib/users-store.ts).
+ *   - Firestore/Storage security rules are currently wide open (not scoped
+ *     to signed-in users) — see the file-level note on lib/firebase.ts.
+ *     Tighten those before this protects anything real.
  */
 
 type View = "login" | "dashboard";
@@ -42,38 +46,44 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "config", label: "Configuración" },
 ];
 
-const KPIS = [
-  {
-    label: "Inventario actual",
-    value: "16",
-    detail: "Semana 16 · Mes 15 · Año 12",
-  },
-  {
-    label: "Contactos / leads",
-    value: "128",
-    detail: "Semana 28 · Mes 128 · Año 1.450",
-  },
-  {
-    label: "Autos vendidos",
-    value: "14",
-    detail: "Semana 3 · Mes 14 · Año 112",
-  },
-  {
-    label: "Tasa de conversión",
-    value: "10,9%",
-    detail: "Semana 10,7% · Mes 10,9% · Año 9,8%",
-  },
-];
-
 export default function AdminPage() {
   const [view, setView] = useState<View>("login");
   const [tab, setTab] = useState<Tab>("panel");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [recentVehicles, setRecentVehicles] = useState<AdminVehicle[]>([]);
   const reduced = useReducedMotion();
-  const inventory = getInventory();
+
+  // Firebase Auth persists sessions across reloads — restore the dashboard
+  // view when one already exists instead of always defaulting to login.
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) setView("dashboard");
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (view !== "dashboard") return;
+    let cancelled = false;
+    getLeads()
+      .then((data) => {
+        if (!cancelled) setLeads(data);
+      })
+      .catch((err) => console.error("No se pudieron cargar los leads:", err));
+    getAdminVehicles()
+      .then((data) => {
+        if (!cancelled) setRecentVehicles(data);
+      })
+      .catch((err) => console.error("No se pudo cargar el inventario:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [view]);
 
   const field =
     "mt-2 w-full rounded-2xl bg-surface-2 px-4 py-3.5 text-[15px] text-ink outline-none transition-colors placeholder:text-ink-faint focus:bg-surface-hi";
@@ -139,11 +149,18 @@ export default function AdminPage() {
             </p>
 
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                const ok = email === DEMO_EMAIL && password === DEMO_PASSWORD;
-                setLoginError(!ok);
-                if (ok) setView("dashboard");
+                setAuthBusy(true);
+                setAuthError(null);
+                try {
+                  await signInWithEmailAndPassword(auth, email, password);
+                  setView("dashboard");
+                } catch {
+                  setAuthError("Correo o contraseña incorrectos.");
+                } finally {
+                  setAuthBusy(false);
+                }
               }}
               className="mt-8 flex flex-col gap-4"
             >
@@ -174,28 +191,24 @@ export default function AdminPage() {
                 />
               </label>
 
-              {loginError && (
+              {authError && (
                 <p className="text-[13px] font-medium text-red-hi">
-                  Correo o contraseña incorrectos.
+                  {authError}
                 </p>
               )}
 
               <button
                 type="submit"
-                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full bg-red px-6 py-3.5 text-[14px] font-semibold text-white transition-colors hover:bg-red-hi"
+                disabled={authBusy}
+                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full bg-red px-6 py-3.5 text-[14px] font-semibold text-white transition-colors hover:bg-red-hi disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Acceder al panel
+                {authBusy ? "Accediendo…" : "Acceder al panel"}
               </button>
             </form>
 
             <p className="mt-6 text-center text-[11px] leading-relaxed text-ink-faint">
-              Prototipo de interfaz — sin autenticación real todavía. Usá{" "}
-              <span className="tnum font-medium text-ink-dim">{DEMO_EMAIL}</span>{" "}
-              /{" "}
-              <span className="tnum font-medium text-ink-dim">
-                {DEMO_PASSWORD}
-              </span>{" "}
-              para entrar.
+              Acceso real vía Firebase Authentication — iniciá sesión con tu
+              cuenta de RS Motors (ej. {DEMO_EMAIL}).
             </p>
           </div>
         </div>
@@ -205,6 +218,37 @@ export default function AdminPage() {
 
   const mainTabs = TABS.filter((t) => t.key !== "config");
   const configTab = TABS.find((t) => t.key === "config")!;
+
+  // Real, derived from the Firestore data already fetched above — not a
+  // tracked sales record, so "Autos vendidos" is a proxy from leads that
+  // reached the "Cerrado" stage, not a separate ledger.
+  const publishedCount = recentVehicles.filter((v) => v.publicado).length;
+  const closedLeads = leads.filter((l) => l.stage === "cerrado").length;
+  const newLeads = leads.filter((l) => l.stage === "nuevo").length;
+  const conversionRate = leads.length ? (closedLeads / leads.length) * 100 : 0;
+
+  const kpis = [
+    {
+      label: "Inventario actual",
+      value: fmtInt(recentVehicles.length),
+      detail: `${fmtInt(publishedCount)} publicados · ${fmtInt(recentVehicles.length - publishedCount)} sin publicar`,
+    },
+    {
+      label: "Contactos / leads",
+      value: fmtInt(leads.length),
+      detail: `${fmtInt(newLeads)} nuevos · ${fmtInt(closedLeads)} cerrados`,
+    },
+    {
+      label: "Autos vendidos",
+      value: fmtInt(closedLeads),
+      detail: "Leads en etapa Cerrado — sin registro de ventas separado todavía",
+    },
+    {
+      label: "Tasa de conversión",
+      value: leads.length ? `${conversionRate.toFixed(1).replace(".", ",")}%` : "—",
+      detail: `${fmtInt(closedLeads)} cerrados de ${fmtInt(leads.length)} leads totales`,
+    },
+  ];
 
   return (
     <div className="flex h-screen flex-col bg-ground text-ink lg:flex-row">
@@ -298,10 +342,12 @@ export default function AdminPage() {
             Volver al sitio
           </Link>
           <div className="mt-3 border-t border-hairline px-4 pt-4">
-            <p className="text-[11px] text-ink-faint">Sesión de demostración</p>
+            <p className="text-[11px] text-ink-faint">Sesión de Firebase</p>
             <button
               type="button"
-              onClick={() => setView("login")}
+              onClick={() => {
+                signOut(auth).finally(() => setView("login"));
+              }}
               className="mt-2 inline-flex items-center gap-2 text-[13px] font-medium text-ink-dim transition-colors hover:text-red-hi"
             >
               <LogOut className="size-4" />
@@ -322,14 +368,15 @@ export default function AdminPage() {
                     Panel de control
                   </h1>
                   <p className="mt-1 text-[13px] text-neutral-400">
-                    Datos de demostración — sin conexión a una base de datos
-                    todavía.
+                    Datos reales de Firestore — &quot;Autos vendidos&quot; y la
+                    tasa de conversión son un estimado a partir de los leads
+                    en Cerrado, no un registro de ventas.
                   </p>
                 </div>
               </header>
 
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                {KPIS.map((kpi) => (
+                {kpis.map((kpi) => (
                   <div
                     key={kpi.label}
                     className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm"
@@ -362,7 +409,7 @@ export default function AdminPage() {
                     </button>
                   </div>
                   <div className="mt-4 flex flex-col gap-2.5">
-                    {inventory.slice(0, 3).map((v) => (
+                    {recentVehicles.slice(0, 3).map((v) => (
                       <div
                         key={v.id}
                         className="flex items-center justify-between rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3"
@@ -399,7 +446,7 @@ export default function AdminPage() {
                     </button>
                   </div>
                   <div className="mt-4 flex flex-col gap-2.5">
-                    {[...SEED_LEADS]
+                    {[...leads]
                       .sort((a, b) => b.urgencyScore - a.urgencyScore)
                       .slice(0, 3)
                       .map((lead) => (
@@ -431,7 +478,7 @@ export default function AdminPage() {
             </div>
           )}
 
-          {tab === "inventario" && <InventoryPanel inventory={inventory} />}
+          {tab === "inventario" && <InventoryPanel />}
           {tab === "contactos" && <LeadsKanban />}
           {tab === "usuarios" && <UsersPanel />}
           {tab === "config" && (
@@ -447,33 +494,47 @@ export default function AdminPage() {
   );
 }
 
-type EditableVehicle = Vehicle & {
-  publicado: boolean;
-  assignedSalesman: string;
-  description: string;
-  features: string;
-};
-
 const editField =
   "w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[13px] text-neutral-900 outline-none transition-colors placeholder:text-neutral-400 focus:border-red focus:bg-white";
 const editLabel = "block text-[12px] font-medium text-neutral-500";
 
-function InventoryPanel({ inventory }: { inventory: Vehicle[] }) {
-  const [rows, setRows] = useState<EditableVehicle[]>(() =>
-    inventory.map((v, i) => ({
-      ...v,
-      publicado: true,
-      assignedSalesman: SALESMEN[i % SALESMEN.length],
-      description: "",
-      features: "",
-    })),
-  );
-  const [editing, setEditing] = useState<EditableVehicle | null>(null);
+function InventoryPanel() {
+  const [rows, setRows] = useState<AdminVehicle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<AdminVehicle | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
-  function togglePublished(id: string) {
+  useEffect(() => {
+    let cancelled = false;
+    getAdminVehicles()
+      .then((data) => {
+        if (!cancelled) setRows(data);
+      })
+      .catch((err) => {
+        console.error("No se pudo cargar el inventario:", err);
+        if (!cancelled) {
+          setLoadError(
+            err instanceof Error && err.message.includes("permission")
+              ? "Firestore rechazó la lectura — revisá las reglas de seguridad."
+              : "No se pudo cargar el inventario.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function togglePublished(v: AdminVehicle) {
     setRows((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, publicado: !r.publicado } : r)),
+      prev.map((r) => (r.id === v.id ? { ...r, publicado: !r.publicado } : r)),
+    );
+    toggleVehiclePublished(v.id, v.publicado).catch((err) =>
+      console.error("No se pudo actualizar la publicación:", err),
     );
   }
 
@@ -481,40 +542,20 @@ function InventoryPanel({ inventory }: { inventory: Vehicle[] }) {
     e.preventDefault();
     if (!editing) return;
     setRows((prev) => prev.map((r) => (r.id === editing.id ? editing : r)));
+    const { id, ...patch } = editing;
+    updateVehicle(id, patch).catch((err) =>
+      console.error("No se pudo guardar la unidad:", err),
+    );
     setEditing(null);
   }
 
   function addVehicle(input?: NewVehicleInput) {
     if (!input || !input.marca || !input.modelo) return;
-    const slugBase = `${input.marca}-${input.modelo}-${input.anio}`
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "");
     const fallbackImage = rows[0]?.imagen ?? "";
-    const newRow: EditableVehicle = {
-      id: `RS-${Date.now()}`,
-      slug: slugBase || `unidad-${Date.now()}`,
-      marca: input.marca,
-      modelo: input.modelo,
-      version: input.tagline,
-      anio: input.anio,
-      km: input.km,
-      precioUSD: input.precioUSD,
-      combustible: "Nafta",
-      transmision: input.transmision,
-      categoria: "Sedán",
-      puertas: 4,
-      status: "recien-ingresado",
-      ingreso: new Date().toISOString().slice(0, 10),
-      ubicacion: "Maldonado",
-      inspeccionado: false,
-      imagen: fallbackImage,
-      publicado: true,
-      assignedSalesman: input.assignedSalesman,
-      description: input.description,
-      features: input.features,
-    };
-    setRows((prev) => [newRow, ...prev]);
+    createVehicle(input, fallbackImage)
+      .then(() => getAdminVehicles())
+      .then(setRows)
+      .catch((err) => console.error("No se pudo crear el vehículo:", err));
   }
 
   return (
@@ -525,7 +566,7 @@ function InventoryPanel({ inventory }: { inventory: Vehicle[] }) {
             Inventario de vehículos
           </h1>
           <p className="mt-1 text-[13px] text-neutral-400">
-            {fmtInt(rows.length)} unidades cargadas (datos de demostración).
+            {fmtInt(rows.length)} unidades en Firestore.
           </p>
         </div>
         <button
@@ -538,6 +579,17 @@ function InventoryPanel({ inventory }: { inventory: Vehicle[] }) {
         </button>
       </header>
 
+      {loadError && (
+        <div className="rounded-xl border border-red/20 bg-red/5 px-4 py-3 text-[13px] font-medium text-red-hi">
+          {loadError}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="rounded-2xl border border-neutral-200 bg-white px-6 py-16 text-center text-[13px] text-neutral-400 shadow-sm">
+          Cargando inventario desde Firestore…
+        </div>
+      ) : (
       <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-left text-[13px]">
@@ -583,7 +635,7 @@ function InventoryPanel({ inventory }: { inventory: Vehicle[] }) {
                   <td className="px-5 py-3">
                     <button
                       type="button"
-                      onClick={() => togglePublished(v.id)}
+                      onClick={() => togglePublished(v)}
                       className={
                         "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors " +
                         (v.publicado
@@ -609,6 +661,7 @@ function InventoryPanel({ inventory }: { inventory: Vehicle[] }) {
           </table>
         </div>
       </div>
+      )}
 
       {editing && (
         <div

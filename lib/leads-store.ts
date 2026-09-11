@@ -1,53 +1,162 @@
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+} from "firebase/firestore";
+import { db } from "./firebase";
+
 /**
- * Bridges the public site's WhatsApp/contact captures to the admin panel's
- * Contactos tab. There's no backend yet (see app/admin/page.tsx's file
- * note), so this persists to the visitor's own browser via localStorage —
- * real, but scoped to one device/browser, not a shared database. Swap this
- * for an actual API call the same way lib/inventory.ts's getInventory() is
- * meant to be swapped for a live query.
+ * Real Firestore-backed leads store ("leads" collection) — the single
+ * source for both the public site's WhatsApp/contact captures (saveLead)
+ * and the admin Contactos kanban (everything else here). See lib/firebase.ts
+ * for the no-real-auth/open-rules caveat this all currently runs under.
  */
 
-const STORAGE_KEY = "rsmotors_captured_leads";
+export type Stage = "nuevo" | "contactado" | "seguimiento" | "cerrado";
 
-export type CapturedLead = {
+export type Comment = { id: string; date: string; text: string };
+
+export type Lead = {
   id: string;
   name: string;
+  interest: string;
   phone: string;
-  /** What they were asking about — a vehicle, financing, a trade-in, etc. */
-  context: string;
-  /** The message that would be / was sent to WhatsApp. */
-  message: string;
-  /** Where on the site this came from, e.g. "Ficha de vehículo". */
+  email: string;
+  stage: Stage;
   source: string;
-  createdAt: string;
+  nextStep: string;
+  due: string;
+  urgencyScore: number;
+  comments: Comment[];
 };
 
-export function saveLead(lead: Omit<CapturedLead, "id" | "createdAt">) {
-  if (typeof window === "undefined") return;
-  try {
-    const existing = getSavedLeads();
-    const entry: CapturedLead = {
-      ...lead,
-      id: `captured-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
-      createdAt: new Date().toISOString(),
-    };
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify([entry, ...existing]),
-    );
-  } catch {
-    // Private browsing / storage disabled — capture is best-effort, not critical.
-  }
+export const STAGES: { key: Stage; label: string }[] = [
+  { key: "nuevo", label: "Nuevo" },
+  { key: "contactado", label: "Contactado" },
+  { key: "seguimiento", label: "En seguimiento" },
+  { key: "cerrado", label: "Cerrado" },
+];
+
+export const STAGE_LABEL: Record<Stage, string> = Object.fromEntries(
+  STAGES.map((s) => [s.key, s.label]),
+) as Record<Stage, string>;
+
+export const SOURCE_OPTIONS = [
+  "WhatsApp",
+  "Instagram",
+  "Sitio web",
+  "Manual / directo",
+  "Red de contactos",
+  "Referido",
+];
+
+const COLLECTION = "leads";
+
+function toLead(id: string, data: Record<string, unknown>): Lead {
+  return {
+    id,
+    name: typeof data.name === "string" ? data.name : "Sin nombre",
+    interest: typeof data.interest === "string" ? data.interest : "Consulta general",
+    phone: typeof data.phone === "string" ? data.phone : "No registrado",
+    email: typeof data.email === "string" ? data.email : "No registrado",
+    stage: (data.stage as Stage) ?? "nuevo",
+    source: typeof data.source === "string" ? data.source : "Sitio web",
+    nextStep: typeof data.nextStep === "string" ? data.nextStep : "Responder consulta",
+    due: typeof data.due === "string" ? data.due : "Hoy",
+    urgencyScore: typeof data.urgencyScore === "number" ? data.urgencyScore : 5,
+    comments: Array.isArray(data.comments) ? (data.comments as Comment[]) : [],
+  };
 }
 
-export function getSavedLeads(): CapturedLead[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+/**
+ * Called from every public WhatsApp/contact touchpoint. Fire-and-forget by
+ * design (callers don't await it — the WhatsApp redirect shouldn't wait on
+ * a network write); failures are logged, not surfaced to the visitor.
+ */
+export function saveLead(input: {
+  name: string;
+  phone: string;
+  context: string;
+  message: string;
+  source: string;
+}): void {
+  const comment: Comment = {
+    id: `c-${Date.now()}`,
+    date: "Recién",
+    text: input.message,
+  };
+  addDoc(collection(db, COLLECTION), {
+    name: input.name,
+    interest: input.context,
+    phone: input.phone || "No registrado",
+    email: "No registrado",
+    stage: "nuevo",
+    source: input.source,
+    nextStep: "Responder consulta",
+    due: "Hoy",
+    urgencyScore: 7,
+    comments: [comment],
+    createdAt: serverTimestamp(),
+  }).catch((err) => {
+    console.error("No se pudo guardar el lead en Firestore:", err);
+  });
+}
+
+export async function getLeads(): Promise<Lead[]> {
+  const snap = await getDocs(
+    query(collection(db, COLLECTION), orderBy("createdAt", "desc")),
+  );
+  return snap.docs.map((d) => toLead(d.id, d.data()));
+}
+
+/** Admin's "Agregar lead externo" — a prospect that came in off-site. */
+export async function createLead(input: {
+  name: string;
+  interest: string;
+  phone: string;
+  email: string;
+  source: string;
+  urgencyScore: number;
+  note: string;
+}): Promise<void> {
+  const comments: Comment[] = input.note.trim()
+    ? [{ id: `c-${Date.now()}`, date: "Recién", text: input.note.trim() }]
+    : [];
+  await addDoc(collection(db, COLLECTION), {
+    name: input.name,
+    interest: input.interest || "Vehículo a definir",
+    phone: input.phone || "No registrado",
+    email: input.email || "No registrado",
+    stage: "nuevo",
+    source: input.source,
+    nextStep: "Primer contacto pendiente",
+    due: "Hoy",
+    urgencyScore: input.urgencyScore,
+    comments,
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function moveLeadStage(id: string, stage: Stage): Promise<void> {
+  await updateDoc(doc(db, COLLECTION, id), { stage });
+}
+
+export async function addLeadComment(id: string, text: string): Promise<void> {
+  const ref = doc(db, COLLECTION, id);
+  const snap = await getDoc(ref);
+  const existing =
+    snap.exists() && Array.isArray(snap.data().comments) ? snap.data().comments : [];
+  const comment: Comment = { id: `c-${Date.now()}`, date: "Recién", text };
+  await updateDoc(ref, { comments: [comment, ...existing] });
+}
+
+export async function deleteLead(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTION, id));
 }

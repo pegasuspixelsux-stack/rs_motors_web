@@ -1,152 +1,25 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Plus, Trash2, X } from "lucide-react";
-import { getSavedLeads, type CapturedLead } from "@/lib/leads-store";
+import {
+  STAGES,
+  SOURCE_OPTIONS,
+  getLeads,
+  createLead as createLeadDoc,
+  moveLeadStage,
+  addLeadComment,
+  deleteLead,
+  type Lead,
+  type Stage,
+} from "@/lib/leads-store";
 
 /**
- * Contactos / leads kanban for the admin panel — same UI-shell-only status
- * as the rest of app/admin/page.tsx. Real WhatsApp/contact-form submissions
- * from the public site land here too (via lib/leads-store.ts's localStorage
- * bridge, seeded into "Nuevo" on load) alongside the demo seed leads. Stage
- * moves, deletes and notes from here on live only in local React state —
- * none of it writes back to leads-store or anywhere else.
+ * Contactos / leads kanban for the admin panel — real Firestore data now
+ * (lib/leads-store.ts's "leads" collection), shared with every public
+ * WhatsApp/contact capture point on the site. See that file and
+ * lib/firebase.ts for the current no-real-auth/open-rules caveat.
  */
-
-export type Stage = "nuevo" | "contactado" | "seguimiento" | "cerrado";
-
-type Comment = { id: string; date: string; text: string };
-
-export type Lead = {
-  id: string;
-  name: string;
-  interest: string;
-  phone: string;
-  email: string;
-  stage: Stage;
-  source: string;
-  nextStep: string;
-  due: string;
-  urgencyScore: number;
-  comments: Comment[];
-};
-
-export const STAGES: { key: Stage; label: string }[] = [
-  { key: "nuevo", label: "Nuevo" },
-  { key: "contactado", label: "Contactado" },
-  { key: "seguimiento", label: "En seguimiento" },
-  { key: "cerrado", label: "Cerrado" },
-];
-
-export const STAGE_LABEL: Record<Stage, string> = Object.fromEntries(
-  STAGES.map((s) => [s.key, s.label]),
-) as Record<Stage, string>;
-
-const SOURCE_OPTIONS = [
-  "WhatsApp",
-  "Instagram",
-  "Sitio web",
-  "Manual / directo",
-  "Red de contactos",
-  "Referido",
-];
-
-/** Shared with app/admin/page.tsx's Panel de control card, so the same
- * demo people show up consistently instead of two disconnected mock lists. */
-export const SEED_LEADS: Lead[] = [
-  {
-    id: "martin-rodriguez",
-    name: "Martín Rodríguez",
-    interest: "Volkswagen Golf GTI",
-    phone: "+598 99 123 456",
-    email: "martin@example.com",
-    stage: "nuevo",
-    source: "WhatsApp",
-    nextStep: "Llamar para coordinar prueba de manejo",
-    due: "Hoy",
-    urgencyScore: 9,
-    comments: [
-      {
-        id: "c1",
-        date: "10/9 14:30",
-        text: "Primer contacto vía WhatsApp. Muy interesado, pide detalles de financiación a 60 meses.",
-      },
-    ],
-  },
-  {
-    id: "camila-suarez",
-    name: "Camila Suárez",
-    interest: "Fiat Cronos",
-    phone: "+598 98 222 111",
-    email: "camila@example.com",
-    stage: "nuevo",
-    source: "Instagram",
-    nextStep: "Responder consulta por WhatsApp",
-    due: "Hoy",
-    urgencyScore: 6,
-    comments: [],
-  },
-  {
-    id: "sofia-valdes",
-    name: "Sofía Valdés",
-    interest: "Hyundai Creta",
-    phone: "+598 98 654 321",
-    email: "sofia@example.com",
-    stage: "contactado",
-    source: "Sitio web",
-    nextStep: "Enviar cotización de financiación",
-    due: "Mañana",
-    urgencyScore: 7,
-    comments: [
-      {
-        id: "c2",
-        date: "8/9 11:15",
-        text: "Llamada telefónica realizada. Viene al local este sábado con permuta.",
-      },
-    ],
-  },
-  {
-    id: "ignacio-silva",
-    name: "Ignacio Silva",
-    interest: "Chevrolet Cruze",
-    phone: "+598 91 987 654",
-    email: "ignacio@example.com",
-    stage: "seguimiento",
-    source: "Referido",
-    nextStep: "Confirmar tasación de permuta",
-    due: "Vie 12/9",
-    urgencyScore: 8,
-    comments: [],
-  },
-  {
-    id: "lucia-fernandez",
-    name: "Lucía Fernández",
-    interest: "Renault Sandero",
-    phone: "+598 97 333 222",
-    email: "lucia@example.com",
-    stage: "seguimiento",
-    source: "Red de contactos",
-    nextStep: "Reenviar link de la calculadora",
-    due: "Vie 12/9",
-    urgencyScore: 5,
-    comments: [],
-  },
-  {
-    id: "bruno-acosta",
-    name: "Bruno Acosta",
-    interest: "Fiat Cronos",
-    phone: "+598 94 555 888",
-    email: "bruno@example.com",
-    stage: "cerrado",
-    source: "Manual / directo",
-    nextStep: "Venta concretada — coordinar entrega",
-    due: "—",
-    urgencyScore: 10,
-    comments: [
-      { id: "c3", date: "5/9 09:00", text: "Seña confirmada. Entrega coordinada para el viernes." },
-    ],
-  },
-];
 
 const sectionLabel =
   "text-[12px] font-semibold uppercase tracking-[0.1em] text-neutral-400";
@@ -154,26 +27,6 @@ const stageSelect =
   "rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-600 outline-none transition-colors focus:border-red";
 const field =
   "w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[13px] text-neutral-900 outline-none transition-colors placeholder:text-neutral-400 focus:border-red focus:bg-white";
-
-function capturedToLead(c: CapturedLead): Lead {
-  const date = new Date(c.createdAt);
-  const dateLabel = Number.isNaN(date.getTime())
-    ? "Recién"
-    : date.toLocaleString("es-UY", { dateStyle: "short", timeStyle: "short" });
-  return {
-    id: c.id,
-    name: c.name,
-    interest: c.context,
-    phone: c.phone || "No registrado",
-    email: "No registrado",
-    stage: "nuevo",
-    source: c.source,
-    nextStep: "Responder consulta",
-    due: "Hoy",
-    urgencyScore: 7,
-    comments: [{ id: `${c.id}-0`, date: dateLabel, text: c.message }],
-  };
-}
 
 const EMPTY_NEW_LEAD = {
   name: "",
@@ -186,68 +39,97 @@ const EMPTY_NEW_LEAD = {
 };
 
 export function LeadsKanban() {
-  const [leads, setLeads] = useState<Lead[]>(() => [
-    ...getSavedLeads().map(capturedToLead),
-    ...SEED_LEADS,
-  ]);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [armedDeleteId, setArmedDeleteId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [newLead, setNewLead] = useState(EMPTY_NEW_LEAD);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getLeads()
+      .then((data) => {
+        if (!cancelled) setLeads(data);
+      })
+      .catch((err) => {
+        console.error("No se pudieron cargar los leads:", err);
+        if (!cancelled) {
+          setLoadError(
+            err instanceof Error && err.message.includes("permission")
+              ? "Firestore rechazó la lectura — revisá las reglas de seguridad."
+              : "No se pudieron cargar los leads.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const active = leads.find((l) => l.id === activeId) ?? null;
 
   function moveStage(id: string, stage: Stage) {
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, stage } : l)));
+    moveLeadStage(id, stage).catch((err) =>
+      console.error("No se pudo mover el lead de etapa:", err),
+    );
   }
 
   function removeLead(id: string) {
     setLeads((prev) => prev.filter((l) => l.id !== id));
     setArmedDeleteId(null);
     setActiveId((prev) => (prev === id ? null : prev));
+    deleteLead(id).catch((err) =>
+      console.error("No se pudo eliminar el lead:", err),
+    );
   }
 
   function addComment(id: string) {
     const text = draft.trim();
     if (!text) return;
-    const comment: Comment = {
-      id: `${id}-${leads.find((l) => l.id === id)?.comments.length ?? 0}-${text.length}`,
-      date: "Recién",
-      text,
-    };
+    const optimistic = { id: `pending-${Date.now()}`, date: "Recién", text };
     setLeads((prev) =>
       prev.map((l) =>
-        l.id === id ? { ...l, comments: [comment, ...l.comments] } : l,
+        l.id === id ? { ...l, comments: [optimistic, ...l.comments] } : l,
       ),
     );
     setDraft("");
+    addLeadComment(id, text).catch((err) =>
+      console.error("No se pudo guardar la nota:", err),
+    );
   }
 
-  function createLead(e: FormEvent) {
+  async function createLead(e: FormEvent) {
     e.preventDefault();
     const name = newLead.name.trim();
     if (!name) return;
-
-    const lead: Lead = {
-      id: `${name.toLowerCase().replace(/\s+/g, "-")}-${leads.length}`,
-      name,
-      interest: newLead.interest.trim() || "Vehículo a definir",
-      phone: newLead.phone.trim() || "No registrado",
-      email: newLead.email.trim() || "No registrado",
-      stage: "nuevo",
-      source: newLead.source,
-      nextStep: "Primer contacto pendiente",
-      due: "Hoy",
-      urgencyScore: Math.min(10, Math.max(1, Number(newLead.urgencyScore) || 5)),
-      comments: newLead.note.trim()
-        ? [{ id: `${name}-0`, date: "Recién", text: newLead.note.trim() }]
-        : [],
-    };
-
-    setLeads((prev) => [lead, ...prev]);
-    setNewLead(EMPTY_NEW_LEAD);
-    setAddOpen(false);
+    setSaving(true);
+    try {
+      await createLeadDoc({
+        name,
+        interest: newLead.interest.trim(),
+        phone: newLead.phone.trim(),
+        email: newLead.email.trim(),
+        source: newLead.source,
+        urgencyScore: Math.min(10, Math.max(1, Number(newLead.urgencyScore) || 5)),
+        note: newLead.note,
+      });
+      const data = await getLeads();
+      setLeads(data);
+      setNewLead(EMPTY_NEW_LEAD);
+      setAddOpen(false);
+    } catch (err) {
+      console.error("No se pudo crear el lead:", err);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -258,9 +140,8 @@ export function LeadsKanban() {
             Contactos y leads
           </h1>
           <p className="mt-1 text-[13px] text-neutral-400">
-            Los WhatsApp y formularios del sitio (en este navegador) caen acá
-            en Nuevo. Movés etapas y agregás notas, pero nada de eso se
-            guarda todavía.
+            Los WhatsApp y formularios del sitio caen acá en Nuevo, en tiempo
+            real vía Firestore.
           </p>
         </div>
         <button
@@ -273,115 +154,127 @@ export function LeadsKanban() {
         </button>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {STAGES.map((stage) => {
-          const stageLeads = leads.filter((l) => l.stage === stage.key);
-          return (
-            <div key={stage.key} className="flex flex-col gap-3">
-              <div className="flex items-center justify-between px-1">
-                <h3 className={sectionLabel}>{stage.label}</h3>
-                <span className="tnum text-[11px] font-medium text-neutral-400">
-                  {stageLeads.length}
-                </span>
-              </div>
-              <div className="flex flex-col gap-3">
-                {stageLeads.map((lead) => (
-                  <div
-                    key={lead.id}
-                    className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-white">
-                          {lead.source}
-                        </span>
-                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-neutral-600">
-                          Urgencia {lead.urgencyScore}/10
+      {loadError && (
+        <div className="rounded-xl border border-red/20 bg-red/5 px-4 py-3 text-[13px] font-medium text-red-hi">
+          {loadError}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="rounded-2xl border border-neutral-200 bg-white px-6 py-16 text-center text-[13px] text-neutral-400 shadow-sm">
+          Cargando leads desde Firestore…
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {STAGES.map((stage) => {
+            const stageLeads = leads.filter((l) => l.stage === stage.key);
+            return (
+              <div key={stage.key} className="flex flex-col gap-3">
+                <div className="flex items-center justify-between px-1">
+                  <h3 className={sectionLabel}>{stage.label}</h3>
+                  <span className="tnum text-[11px] font-medium text-neutral-400">
+                    {stageLeads.length}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {stageLeads.map((lead) => (
+                    <div
+                      key={lead.id}
+                      className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-white">
+                            {lead.source}
+                          </span>
+                          <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-neutral-600">
+                            Urgencia {lead.urgencyScore}/10
+                          </span>
+                        </div>
+                        {armedDeleteId === lead.id ? (
+                          <div className="flex shrink-0 items-center gap-2 text-[11px] font-medium">
+                            <button
+                              type="button"
+                              onClick={() => setArmedDeleteId(null)}
+                              className="text-neutral-400 hover:text-neutral-700"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeLead(lead.id)}
+                              className="text-red-hi hover:underline"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setArmedDeleteId(lead.id)}
+                            aria-label="Eliminar lead"
+                            className="shrink-0 text-neutral-300 transition-colors hover:text-red-hi"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="mt-2 text-[14px] font-medium text-neutral-900">
+                        {lead.name}
+                      </div>
+                      <div className="text-[12px] text-neutral-400">
+                        {lead.interest}
+                      </div>
+
+                      <div className="mt-3 rounded-xl border border-neutral-100 bg-neutral-50 p-3">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
+                          Próximo paso
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-neutral-600">
+                          {lead.nextStep}
+                        </p>
+                        <span className="tnum mt-2 inline-block rounded-full bg-red/10 px-2 py-0.5 text-[10px] font-medium text-red">
+                          {lead.due}
                         </span>
                       </div>
-                      {armedDeleteId === lead.id ? (
-                        <div className="flex shrink-0 items-center gap-2 text-[11px] font-medium">
-                          <button
-                            type="button"
-                            onClick={() => setArmedDeleteId(null)}
-                            className="text-neutral-400 hover:text-neutral-700"
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeLead(lead.id)}
-                            className="text-red-hi hover:underline"
-                          >
-                            Eliminar
-                          </button>
-                        </div>
-                      ) : (
+
+                      <div className="mt-3 flex items-center justify-between gap-2 border-t border-neutral-100 pt-3">
+                        <select
+                          value={lead.stage}
+                          onChange={(e) =>
+                            moveStage(lead.id, e.target.value as Stage)
+                          }
+                          aria-label="Mover de etapa"
+                          className={stageSelect}
+                        >
+                          {STAGES.map((s) => (
+                            <option key={s.key} value={s.key}>
+                              {s.label}
+                            </option>
+                          ))}
+                        </select>
                         <button
                           type="button"
-                          onClick={() => setArmedDeleteId(lead.id)}
-                          aria-label="Eliminar lead"
-                          className="shrink-0 text-neutral-300 transition-colors hover:text-red-hi"
+                          onClick={() => setActiveId(lead.id)}
+                          className="text-[12px] font-medium text-neutral-500 transition-colors hover:text-neutral-900"
                         >
-                          <Trash2 className="size-4" />
+                          {lead.comments.length} notas · Abrir →
                         </button>
-                      )}
-                    </div>
-
-                    <div className="mt-2 text-[14px] font-medium text-neutral-900">
-                      {lead.name}
-                    </div>
-                    <div className="text-[12px] text-neutral-400">
-                      {lead.interest}
-                    </div>
-
-                    <div className="mt-3 rounded-xl border border-neutral-100 bg-neutral-50 p-3">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
-                        Próximo paso
                       </div>
-                      <p className="mt-1 text-[12px] leading-relaxed text-neutral-600">
-                        {lead.nextStep}
-                      </p>
-                      <span className="tnum mt-2 inline-block rounded-full bg-red/10 px-2 py-0.5 text-[10px] font-medium text-red">
-                        {lead.due}
-                      </span>
                     </div>
-
-                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-neutral-100 pt-3">
-                      <select
-                        value={lead.stage}
-                        onChange={(e) =>
-                          moveStage(lead.id, e.target.value as Stage)
-                        }
-                        aria-label="Mover de etapa"
-                        className={stageSelect}
-                      >
-                        {STAGES.map((s) => (
-                          <option key={s.key} value={s.key}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => setActiveId(lead.id)}
-                        className="text-[12px] font-medium text-neutral-500 transition-colors hover:text-neutral-900"
-                      >
-                        {lead.comments.length} notas · Abrir →
-                      </button>
+                  ))}
+                  {stageLeads.length === 0 && (
+                    <div className="rounded-2xl border border-dashed border-neutral-200 p-4 text-center text-[12px] text-neutral-400">
+                      Sin leads en esta etapa
                     </div>
-                  </div>
-                ))}
-                {stageLeads.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-neutral-200 p-4 text-center text-[12px] text-neutral-400">
-                    Sin leads en esta etapa
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {addOpen && (
         <div
@@ -519,9 +412,10 @@ export function LeadsKanban() {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-full bg-red px-8 py-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-white transition-colors hover:bg-red-hi"
+                  disabled={saving}
+                  className="rounded-full bg-red px-8 py-3 text-[12px] font-semibold uppercase tracking-[0.06em] text-white transition-colors hover:bg-red-hi disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Guardar lead
+                  {saving ? "Guardando…" : "Guardar lead"}
                 </button>
               </div>
             </form>

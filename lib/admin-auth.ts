@@ -1,9 +1,9 @@
 /**
- * Mock-only demo credentials for the admin shell (app/admin/page.tsx). Not
- * real authentication — anyone can read these in the page source. Kept here
- * (rather than declared inline) so the Usuarios tab's demo "Administrador"
- * row can reference the same address as the one that actually logs in,
- * without app/admin/page.tsx and components/admin/* importing each other.
+ * The admin login (app/admin/page.tsx) authenticates against a real
+ * Firebase Auth account now — this is just the email shown as a
+ * placeholder/hint and used to seed the Usuarios tab's "Administrador" row
+ * with the same address as the one that actually logs in, without
+ * app/admin/page.tsx and lib/users-store.ts importing each other. The
+ * password lives only in Firebase Auth — nothing here knows it.
  */
 export const DEMO_EMAIL = "admin@rsmotors.uy";
-export const DEMO_PASSWORD = "rsmotors2026";

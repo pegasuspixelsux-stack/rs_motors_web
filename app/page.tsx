@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import miAutoLogo from "@/public/images/mi_auto_logo.png";
 import {
@@ -26,6 +26,7 @@ import { FINANCE } from "@/lib/finance";
 import { SITE, waLink } from "@/lib/site";
 import { saveLead } from "@/lib/leads-store";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
+import { useReveal, revealClassName } from "@/lib/use-reveal";
 
 /* ------------------------------------------------------------------ *
  *  Static data — the seam for a live backend (Supabase, an API, …).
@@ -79,10 +80,21 @@ function SectionHeading({
 function Hero() {
   const reduced = useReducedMotion();
   return (
-    <section className="relative isolate overflow-hidden">
+    <section className="relative isolate overflow-hidden bg-ground">
       <div className="absolute inset-0 -z-10">
+        {/* Optimized, priority-loaded poster paints immediately (and stays
+            as the background if the video is still loading on a slow
+            mobile connection) — the video plays on top once it's ready. */}
+        <Image
+          src="/videos/hero-poster.jpg"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover"
+        />
         <video
-          className="size-full object-cover"
+          className="absolute inset-0 size-full object-cover"
           poster="/videos/hero-poster.jpg"
           autoPlay={!reduced}
           muted
@@ -106,7 +118,7 @@ function Hero() {
           <span className="text-red-hi">Todos los días.</span>
         </h1>
         <p className="mt-7 max-w-[50ch] text-[17px] leading-relaxed text-ink-dim [text-shadow:0_1px_12px_rgba(0,0,0,0.7)] sm:text-[19px]">
-          Una selección corta de usados en Maldonado. Cada unidad elegida y
+          Una selección exclusiva de usados en Maldonado. Cada unidad elegida y
           revisada punto por punto, con kilómetros reales y precio sin vueltas.
         </p>
 
@@ -134,6 +146,8 @@ function Hero() {
  *  Selección (inventory)
  * ------------------------------------------------------------------ */
 function Seleccion() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const visible = useReveal(sectionRef);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("todos");
   const [marca, setMarca] = useState<string>("todas");
@@ -163,7 +177,10 @@ function Seleccion() {
   const resetToFirstPage = () => setPage(1);
 
   return (
-    <section className="px-5 py-24 sm:px-8 sm:py-32">
+    <section
+      ref={sectionRef}
+      className={"px-5 py-24 sm:px-8 sm:py-32 " + revealClassName(visible)}
+    >
       <div className="mx-auto max-w-[1320px]">
         <SectionHeading
           id="unidades"
@@ -441,6 +458,8 @@ function Slider({
 }
 
 function Tools() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const visible = useReveal(sectionRef);
   const [tab, setTab] = useState<"tasacion" | "calculadora">("calculadora");
 
   // Deep-linked from other pages, e.g. /?tab=permuta#herramientas
@@ -472,8 +491,12 @@ function Tools() {
 
   return (
     <section
+      ref={sectionRef}
       id="herramientas"
-      className="scroll-mt-28 px-5 pb-24 pt-4 sm:px-8 sm:pb-32 sm:pt-8"
+      className={
+        "scroll-mt-28 px-5 pb-24 pt-4 sm:px-8 sm:pb-32 sm:pt-8 " +
+        revealClassName(visible)
+      }
     >
       <div className="mx-auto max-w-[1320px]">
         <div className="flex gap-2 rounded-full bg-surface p-1.5">
@@ -742,6 +765,8 @@ function Tools() {
  *  About
  * ------------------------------------------------------------------ */
 function About() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const visible = useReveal(sectionRef);
   const metrics = [
     {
       icon: ShieldCheck,
@@ -764,7 +789,10 @@ function About() {
   ];
 
   return (
-    <section className="px-5 py-24 sm:px-8 sm:py-32">
+    <section
+      ref={sectionRef}
+      className={"px-5 py-24 sm:px-8 sm:py-32 " + revealClassName(visible)}
+    >
       <div className="mx-auto max-w-[1320px]">
         <SectionHeading id="nosotros" title="Nosotros" />
 
@@ -832,6 +860,8 @@ function About() {
  *  Contact
  * ------------------------------------------------------------------ */
 function Contact() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const visible = useReveal(sectionRef);
   const maps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(SITE.mapsQuery)}`;
   const [form, setForm] = useState({ nombre: "", contacto: "", mensaje: "" });
 
@@ -848,8 +878,11 @@ function Contact() {
 
   return (
     <section
+      ref={sectionRef}
       id="contacto"
-      className="scroll-mt-28 px-5 py-24 sm:px-8 sm:py-32"
+      className={
+        "scroll-mt-28 px-5 py-24 sm:px-8 sm:py-32 " + revealClassName(visible)
+      }
     >
       <div className="mx-auto grid max-w-[1320px] gap-14 lg:grid-cols-2 lg:items-center lg:gap-20">
         {/* left — heading + contact data */}

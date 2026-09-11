@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { ArrowLeft, Lock, LogOut, Plus, X } from "lucide-react";
+import { ArrowLeft, Lock, LogOut, Menu, Plus, X } from "lucide-react";
 import { Wordmark } from "@/components/wordmark";
 import {
   AddInventoryModal,
@@ -71,6 +71,7 @@ export default function AdminPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const reduced = useReducedMotion();
   const inventory = getInventory();
 
@@ -206,22 +207,60 @@ export default function AdminPage() {
   const configTab = TABS.find((t) => t.key === "config")!;
 
   return (
-    <div className="flex h-screen bg-ground text-ink">
-      {/* nav — dark, pinned top+bottom while main scrolls independently */}
-      <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col justify-between border-r border-hairline bg-surface">
+    <div className="flex h-screen flex-col bg-ground text-ink lg:flex-row">
+      {/* mobile top bar — replaces the sidebar's role below lg */}
+      <div className="flex items-center justify-between border-b border-hairline bg-surface px-5 py-4 lg:hidden">
+        <Wordmark height={17} />
+        <button
+          type="button"
+          onClick={() => setNavOpen(true)}
+          aria-label="Abrir menú"
+          className="grid size-9 place-items-center rounded-full bg-surface-2 text-ink transition-colors hover:bg-surface-hi"
+        >
+          <Menu className="size-4" />
+        </button>
+      </div>
+
+      {navOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+          onClick={() => setNavOpen(false)}
+        />
+      )}
+
+      {/* nav — sticky sidebar on desktop, slide-in drawer on mobile */}
+      <aside
+        className={
+          "fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 flex-col justify-between border-r border-hairline bg-surface transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:w-64 lg:translate-x-0 " +
+          (navOpen ? "translate-x-0" : "-translate-x-full")
+        }
+      >
         <div className="p-6">
-          <div className="flex items-center gap-3">
-            <Wordmark height={18} />
-            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-faint">
-              Panel
-            </span>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Wordmark height={18} />
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-faint">
+                Panel
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setNavOpen(false)}
+              aria-label="Cerrar menú"
+              className="grid size-8 place-items-center rounded-full text-ink-faint transition-colors hover:bg-surface-2 hover:text-ink lg:hidden"
+            >
+              <X className="size-4" />
+            </button>
           </div>
           <nav className="mt-8 flex flex-col gap-1">
             {mainTabs.map((t) => (
               <button
                 key={t.key}
                 type="button"
-                onClick={() => setTab(t.key)}
+                onClick={() => {
+                  setTab(t.key);
+                  setNavOpen(false);
+                }}
                 className={
                   "rounded-xl px-4 py-3 text-left text-[13px] font-medium transition-colors " +
                   (tab === t.key
@@ -238,7 +277,10 @@ export default function AdminPage() {
         <div className="border-t border-hairline p-6">
           <button
             type="button"
-            onClick={() => setTab(configTab.key)}
+            onClick={() => {
+              setTab(configTab.key);
+              setNavOpen(false);
+            }}
             className={
               "w-full rounded-xl px-4 py-3 text-left text-[13px] font-medium transition-colors " +
               (tab === configTab.key
@@ -270,7 +312,7 @@ export default function AdminPage() {
       </aside>
 
       {/* main — light, for data-dense working space */}
-      <main className="flex-1 overflow-y-auto bg-neutral-50 p-8 text-neutral-900 lg:p-12">
+      <main className="flex-1 overflow-y-auto bg-neutral-50 p-5 text-neutral-900 sm:p-8 lg:p-12">
         <div className="mx-auto max-w-6xl">
           {tab === "panel" && (
             <div className="space-y-10">

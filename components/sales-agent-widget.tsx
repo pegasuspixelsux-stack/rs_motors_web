@@ -122,6 +122,21 @@ export function SalesAgentWidget() {
   }
 
   const dotPing = reduced ? "" : "animate-ping ";
+  const [entered, setEntered] = useState(false);
+
+  useEffect(() => {
+    if (!open || reduced) return; // reduced-motion case is derived below, not synced into state
+    // Mount closed, then flip a frame later so the transition actually
+    // animates instead of snapping straight to its end state. Resetting
+    // `entered` back to false lives in the cleanup, so it reruns next open.
+    const id = requestAnimationFrame(() => setEntered(true));
+    return () => {
+      cancelAnimationFrame(id);
+      setEntered(false);
+    };
+  }, [open, reduced]);
+
+  const showPanel = reduced || entered;
 
   if (!open) {
     return (
@@ -152,7 +167,12 @@ export function SalesAgentWidget() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-[calc(100vw-3rem)] max-w-[380px] sm:max-w-[420px]">
+    <div
+      className={
+        "fixed bottom-6 right-6 z-50 w-[calc(100vw-3rem)] max-w-[380px] transition-all duration-300 ease-out sm:max-w-[420px] " +
+        (showPanel ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0")
+      }
+    >
       <div
         role="dialog"
         aria-modal="false"

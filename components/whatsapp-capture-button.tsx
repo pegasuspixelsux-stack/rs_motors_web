@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { waLink } from "@/lib/site";
 import { saveLead } from "@/lib/leads-store";
 import { WhatsappGlyph } from "./whatsapp-glyph";
@@ -16,6 +17,12 @@ import { WhatsappGlyph } from "./whatsapp-glyph";
  * capture. The one exception is the inline contact forms (vehicle detail
  * and the homepage Contacto section), which already ask for name/phone
  * directly and call saveLead themselves without this modal.
+ *
+ * The modal is portaled to document.body: the Nav's call site sits inside
+ * a `backdrop-blur-xl` header, and a backdrop-filter (like `transform`)
+ * makes its element the containing block for `position: fixed` descendants
+ * — without the portal, the overlay would be confined to that ~64px header
+ * box instead of the viewport, showing up squeezed against the top edge.
  */
 export function WhatsappCaptureButton({
   buildMessage,
@@ -57,17 +64,18 @@ export function WhatsappCaptureButton({
         {buttonLabel}
       </button>
 
-      {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
-          onClick={() => setOpen(false)}
-        >
+      {open &&
+        createPortal(
           <div
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-[24px] border border-hairline bg-surface p-8 shadow-float"
+            className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
+            onClick={() => setOpen(false)}
           >
+            <div
+              role="dialog"
+              aria-modal="true"
+              onClick={(e) => e.stopPropagation()}
+              className="my-8 w-full max-w-md rounded-[24px] border border-hairline bg-surface p-8 shadow-float"
+            >
             <h3 className="text-center text-[13px] font-semibold uppercase tracking-[0.14em] text-ink">
               Contacto por WhatsApp
             </h3>
@@ -137,8 +145,9 @@ export function WhatsappCaptureButton({
               </div>
             </form>
           </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

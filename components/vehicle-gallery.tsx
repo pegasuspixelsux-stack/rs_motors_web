@@ -5,9 +5,10 @@ import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 /**
- * Boxed hero slideshow for the vehicle detail page — a large 16:9 photo
- * within the page's usual content column, with side arrows and a thumbnail
- * strip beneath it.
+ * Boxed hero slideshow for the vehicle detail page — a large photo within
+ * the page's usual content column, with side arrows and a thumbnail strip
+ * beneath it. Square (1:1) on mobile so the subject isn't cropped as tight
+ * on narrow screens; 16:9 from sm: up.
  */
 export function VehicleGallery({
   photos,
@@ -22,7 +23,7 @@ export function VehicleGallery({
 
   return (
     <div className="mx-auto max-w-[1320px] px-5 pt-8 sm:px-8">
-      <div className="relative aspect-[16/9] overflow-hidden rounded-[28px] bg-ground">
+      <div className="relative aspect-square overflow-hidden rounded-[28px] bg-ground sm:aspect-[16/9]">
         {photos.map((src, i) => (
           <Image
             key={src + i}

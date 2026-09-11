@@ -43,3 +43,7 @@ next-env.d.ts
 # impeccable (transient review captures)
 .impeccable/review/
 .impeccable/mocks/
+
+# uploaded listing photos (local dev storage — not committed)
+/public/images/vehicles/uploads/*
+!/public/images/vehicles/uploads/.gitkeep

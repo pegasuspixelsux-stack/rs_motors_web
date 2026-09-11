@@ -1,24 +1,28 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import miAutoLogo from "@/public/images/mi_auto_logo.png";
 import {
   ArrowRight,
   Check,
+  ChevronDown,
   MapPin,
-  Menu,
   Search,
   ShieldCheck,
   Tag,
   X,
 } from "lucide-react";
-import { RSMark } from "@/components/rs-mark";
+import { Nav } from "@/components/site-nav";
+import { Footer } from "@/components/site-footer";
 import { Odometer } from "@/components/odometer";
 import { VehicleCard } from "@/components/vehicle-card";
+import { SalesAgentWidget } from "@/components/sales-agent-widget";
 import { WhatsappGlyph } from "@/components/whatsapp-glyph";
 import { getCategories, getInventory } from "@/lib/inventory";
 import { fmtInt, fmtUSD } from "@/lib/format";
 import { FINANCE } from "@/lib/finance";
-import { NAV_LINKS, SITE, waLink } from "@/lib/site";
+import { SITE, waLink } from "@/lib/site";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 
 /* ------------------------------------------------------------------ *
@@ -28,23 +32,11 @@ import { useReducedMotion } from "@/lib/use-reduced-motion";
 const ALL_VEHICLES = getInventory();
 const CATEGORIES = getCategories();
 const PER_PAGE = 12;
-
-/* ------------------------------------------------------------------ *
- *  Wordmark — logo mark + "MOTORS"
- * ------------------------------------------------------------------ */
-function Wordmark({ height = 20 }: { height?: number }) {
-  return (
-    <span className="flex items-center gap-2.5">
-      <RSMark height={height} priority />
-      <span
-        className="font-semibold tracking-[0.14em] text-ink"
-        style={{ fontSize: height * 0.62 }}
-      >
-        MOTORS
-      </span>
-    </span>
-  );
-}
+const MARCAS = Array.from(new Set(ALL_VEHICLES.map((v) => v.marca))).sort();
+const MAX_PRICE = Math.max(...ALL_VEHICLES.map((v) => v.precioUSD));
+const MIN_PRICE = Math.min(...ALL_VEHICLES.map((v) => v.precioUSD));
+/** Illustrative TNA tiers the visitor can pick in the calculator. */
+const RATE_OPTIONS = [5.97, 6.97, 8.97, 10.97];
 
 /* ------------------------------------------------------------------ *
  *  Section heading
@@ -80,73 +72,6 @@ function SectionHeading({
 }
 
 /* ------------------------------------------------------------------ *
- *  Nav
- * ------------------------------------------------------------------ */
-function Nav() {
-  const [open, setOpen] = useState(false);
-  const wa = waLink("Hola RS Motors, quería hacer una consulta.");
-
-  return (
-    <header className="sticky top-0 z-50 border-b border-hairline bg-ground/70 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between px-5 sm:px-8">
-        <a href="#top" aria-label="RS Motors — inicio">
-          <Wordmark height={19} />
-        </a>
-
-        <nav className="hidden items-center gap-9 md:flex">
-          {NAV_LINKS.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              className="text-[14px] font-medium text-ink-dim transition-colors hover:text-ink"
-            >
-              {l.label}
-            </a>
-          ))}
-        </nav>
-
-        <div className="flex items-center gap-2.5">
-          <a
-            href={wa}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-full bg-red px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-red-hi"
-          >
-            <WhatsappGlyph size={15} />
-            WhatsApp
-          </a>
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="grid size-9 place-items-center rounded-full bg-surface text-ink transition-colors hover:bg-surface-hi md:hidden"
-            aria-label={open ? "Cerrar menú" : "Abrir menú"}
-            aria-expanded={open}
-          >
-            {open ? <X className="size-4" /> : <Menu className="size-4" />}
-          </button>
-        </div>
-      </div>
-
-      {open && (
-        <nav className="border-t border-hairline bg-ground px-4 py-2 md:hidden">
-          {NAV_LINKS.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              onClick={() => setOpen(false)}
-              className="flex items-center justify-between rounded-2xl px-4 py-3.5 text-[15px] font-medium text-ink-dim transition-colors hover:bg-surface hover:text-ink"
-            >
-              {l.label}
-              <ArrowRight className="size-4 text-ink-faint" />
-            </a>
-          ))}
-        </nav>
-      )}
-    </header>
-  );
-}
-
-/* ------------------------------------------------------------------ *
  *  Hero — looping video background
  * ------------------------------------------------------------------ */
 function Hero() {
@@ -166,11 +91,14 @@ function Hero() {
         >
           <source src="/videos/hero.mp4" type="video/mp4" />
         </video>
-        <div className="absolute inset-0 bg-gradient-to-r from-ground/75 via-ground/45 to-ground/10" />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-ground" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent from-10% via-ground/32 via-60% to-ground" />
       </div>
 
       <div className="mx-auto max-w-[1320px] px-5 pb-28 pt-36 sm:px-8 sm:pb-40 sm:pt-48">
+        <div className="mb-6 inline-flex items-center gap-2 text-[13px] font-semibold text-yellow-400 [text-shadow:0_1px_10px_rgba(0,0,0,0.6)]">
+          <MapPin className="size-3.5 shrink-0" />
+          {SITE.address}
+        </div>
         <h1 className="max-w-[17ch] text-[clamp(2.75rem,7.5vw,5.5rem)] font-semibold leading-[1.0] tracking-[-0.04em] text-ink [text-shadow:0_2px_28px_rgba(0,0,0,0.5)]">
           Estándar de exigencia.{" "}
           <span className="text-red-hi">Todos los días.</span>
@@ -206,18 +134,24 @@ function Hero() {
 function Seleccion() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("todos");
+  const [marca, setMarca] = useState<string>("todas");
+  const [transmision, setTransmision] = useState<string>("todas");
+  const [maxPrice, setMaxPrice] = useState(MAX_PRICE);
   const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return ALL_VEHICLES.filter((v) => {
       if (category !== "todos" && v.categoria !== category) return false;
+      if (marca !== "todas" && v.marca !== marca) return false;
+      if (transmision !== "todas" && v.transmision !== transmision) return false;
+      if (v.precioUSD > maxPrice) return false;
       if (!q) return true;
       return `${v.marca} ${v.modelo} ${v.version} ${v.anio} ${v.categoria}`
         .toLowerCase()
         .includes(q);
     });
-  }, [query, category]);
+  }, [query, category, marca, transmision, maxPrice]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const currentPage = Math.min(page, totalPages);
@@ -231,7 +165,7 @@ function Seleccion() {
       <div className="mx-auto max-w-[1320px]">
         <SectionHeading
           id="unidades"
-          title="Unidades seleccionadas"
+          title="Unidades Seleccionadas"
           subtitle="Porque el auto con el que soñás ya está a tu alcance, diseñado para tu ritmo de vida."
           aside={
             <p className="tnum text-[14px] text-ink-dim">
@@ -294,6 +228,56 @@ function Seleccion() {
           </label>
         </div>
 
+        {/* advanced filters */}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <FilterSelect
+            label="Marca"
+            value={marca}
+            onChange={(v) => {
+              setMarca(v);
+              resetToFirstPage();
+            }}
+            options={[
+              { value: "todas", label: "Todas las marcas" },
+              ...MARCAS.map((m) => ({ value: m, label: m })),
+            ]}
+          />
+          <FilterSelect
+            label="Transmisión"
+            value={transmision}
+            onChange={(v) => {
+              setTransmision(v);
+              resetToFirstPage();
+            }}
+            options={[
+              { value: "todas", label: "Todas" },
+              { value: "Manual", label: "Manual" },
+              { value: "Automática", label: "Automática" },
+            ]}
+          />
+          <label className="flex items-center gap-3 rounded-full bg-surface px-5 py-3">
+            <span className="text-[13px] font-medium text-ink-dim">
+              Precio máx.
+            </span>
+            <input
+              type="range"
+              min={MIN_PRICE}
+              max={MAX_PRICE}
+              step={1000}
+              value={maxPrice}
+              onChange={(e) => {
+                setMaxPrice(Number(e.target.value));
+                resetToFirstPage();
+              }}
+              className="w-32 sm:w-40"
+              aria-label="Precio máximo"
+            />
+            <span className="tnum text-[13px] font-semibold text-ink">
+              {fmtUSD(maxPrice)}
+            </span>
+          </label>
+        </div>
+
         {/* grid */}
         {pageItems.length > 0 ? (
           <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -302,6 +286,7 @@ function Seleccion() {
                 key={v.id}
                 vehicle={v}
                 priority={currentPage === 1 && i < 4}
+                showMeta={false}
               />
             ))}
           </div>
@@ -319,6 +304,9 @@ function Seleccion() {
               onClick={() => {
                 setQuery("");
                 setCategory("todos");
+                setMarca("todas");
+                setTransmision("todas");
+                setMaxPrice(MAX_PRICE);
                 resetToFirstPage();
               }}
               className="mt-6 inline-flex items-center gap-2 rounded-full bg-surface-2 px-5 py-2.5 text-[13px] font-semibold text-ink transition-colors hover:bg-surface-hi"
@@ -377,6 +365,37 @@ function Seleccion() {
   );
 }
 
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <label className="relative flex items-center gap-2 rounded-full bg-surface pl-5 pr-9 py-3">
+      <span className="text-[13px] font-medium text-ink-dim">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={label}
+        className="appearance-none bg-transparent text-[13px] font-medium text-ink outline-none"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value} className="bg-surface text-ink">
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-4 size-3.5 text-ink-faint" />
+    </label>
+  );
+}
+
 /* ------------------------------------------------------------------ *
  *  Tools — trade appraisal + finance calculator
  * ------------------------------------------------------------------ */
@@ -422,6 +441,15 @@ function Slider({
 function Tools() {
   const [tab, setTab] = useState<"tasacion" | "calculadora">("calculadora");
 
+  // Deep-linked from other pages, e.g. /?tab=permuta#herramientas
+  useEffect(() => {
+    queueMicrotask(() => {
+      if (new URLSearchParams(window.location.search).get("tab") === "permuta") {
+        setTab("tasacion");
+      }
+    });
+  }, []);
+
   const [trade, setTrade] = useState({ marca: "", modelo: "", anio: "", km: "" });
   const tradeReady = Boolean(trade.marca && trade.modelo && trade.anio);
   const tradeMessage = `Hola RS Motors, quiero tasar mi usado para permuta:\n· Marca: ${trade.marca}\n· Modelo: ${trade.modelo}\n· Año: ${trade.anio}\n· Km: ${trade.km || "s/d"}`;
@@ -431,13 +459,14 @@ function Tools() {
     Math.round(18000 * FINANCE.downPaymentPct),
   );
   const [plazo, setPlazo] = useState<number>(FINANCE.termMonths);
+  const [tna, setTna] = useState<number>(FINANCE.apr * 100);
 
   const financiado = Math.max(0, precio - entrega);
-  const r = FINANCE.apr / 12;
+  const r = tna / 100 / 12;
   const cuota =
     financiado === 0 ? 0 : (financiado * r) / (1 - Math.pow(1 + r, -plazo));
   const totalPagar = entrega + cuota * plazo;
-  const financeMessage = `Hola RS Motors, quiero consultar financiación:\n· Precio: ${fmtUSD(precio)}\n· Entrega: ${fmtUSD(entrega)}\n· Plazo: ${plazo} meses\n· Cuota estimada: ${fmtUSD(cuota)}`;
+  const financeMessage = `Hola RS Motors, quiero consultar financiación:\n· Precio: ${fmtUSD(precio)}\n· Entrega: ${fmtUSD(entrega)}\n· Plazo: ${plazo} meses\n· TNA: ${tna.toFixed(2)}%\n· Cuota estimada: ${fmtUSD(cuota)}`;
 
   return (
     <section
@@ -449,7 +478,7 @@ function Tools() {
           {(
             [
               ["calculadora", "Calculadora de Cuota"],
-              ["tasacion", "Tasá tu usado"],
+              ["tasacion", "Entregá tu usado"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -476,13 +505,13 @@ function Tools() {
                   Financiación
                 </h3>
                 <p className="mt-5 max-w-[46ch] text-[16px] leading-relaxed text-ink-dim">
-                  Mové los valores y mirá cómo cambia la cuota. Tomamos{" "}
-                  {Math.round(FINANCE.downPaymentPct * 100)}% de entrega y{" "}
-                  {FINANCE.termMonths} meses como referencia, y tu permuta también
-                  cuenta como parte de la entrega. Es un número orientativo con
-                  TNA estimada del {(FINANCE.apr * 100).toFixed(2)}%; la cuota
-                  final la confirma la financiera.
+                  Mové los valores y elegí una tasa para ver cómo cambia la
+                  cuota. Tomamos {Math.round(FINANCE.downPaymentPct * 100)}% de
+                  entrega y {FINANCE.termMonths} meses como referencia, y tu
+                  permuta también cuenta como parte de la entrega. Es un número
+                  orientativo; la cuota final la confirma la financiera.
                 </p>
+
                 <div className="mt-9 flex flex-1 flex-col justify-center gap-7">
                   <Slider
                     label="Precio del vehículo"
@@ -516,6 +545,35 @@ function Tools() {
                     onChange={setPlazo}
                     format={(v) => `${v} meses`}
                   />
+
+                  <div>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-[13px] font-medium text-ink-dim">
+                        Tasa de interés (TNA)
+                      </span>
+                      <span className="tnum text-[16px] font-semibold text-ink">
+                        {tna.toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {RATE_OPTIONS.map((rate) => (
+                        <button
+                          key={rate}
+                          type="button"
+                          onClick={() => setTna(rate)}
+                          className={
+                            "tnum rounded-full px-4 py-2 text-[13px] font-medium transition-colors " +
+                            (rate === tna
+                              ? "bg-red text-white"
+                              : "bg-surface-2 text-ink-dim hover:bg-surface-hi hover:text-ink")
+                          }
+                          aria-pressed={rate === tna}
+                        >
+                          {rate.toFixed(2)}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -540,7 +598,7 @@ function Tools() {
                     {[
                       ["Precio total", fmtUSD(precio)],
                       ["A financiar", fmtUSD(financiado)],
-                      ["TNA estimada", `${(FINANCE.apr * 100).toFixed(2)}%`],
+                      ["TNA seleccionada", `${tna.toFixed(2)}%`],
                       ["Total a pagar", fmtUSD(totalPagar)],
                     ].map(([k, v]) => (
                       <div key={k}>
@@ -555,6 +613,19 @@ function Tools() {
                   <p className="mt-6 text-[12px] leading-relaxed text-ink-faint">
                     Cálculo orientativo. Sujeto a aprobación crediticia.
                   </p>
+
+                  <div className="mt-5 flex items-center gap-3">
+                    <span className="text-[11px] font-medium text-ink-faint">
+                      En alianza con
+                    </span>
+                    <Image
+                      src={miAutoLogo}
+                      alt="Mi Auto by Santander"
+                      height={44}
+                      style={{ height: 44, width: "auto" }}
+                    />
+                  </div>
+
                   <a
                     href={waLink(financeMessage)}
                     target="_blank"
@@ -564,6 +635,15 @@ function Tools() {
                     <WhatsappGlyph size={16} />
                     Consultar esta cuota
                   </a>
+
+                  <p className="mt-5 text-[11px] leading-relaxed text-ink-faint">
+                    Los montos de las cuotas y las tasas de interés presentadas
+                    son de carácter estimativo y promedio. Cada cliente cuenta
+                    con un perfil crediticio único, por lo que los valores
+                    definitivos pueden variar según la evaluación de su
+                    historial de crédito y las condiciones específicas
+                    aprobadas por la entidad financiera.
+                  </p>
                 </div>
             </div>
           ) : (
@@ -574,15 +654,39 @@ function Tools() {
                   Permuta
                 </h3>
                 <p className="mt-5 max-w-[46ch] text-[17px] leading-relaxed text-ink">
-                  Lo que hoy pensás que es imposible, no lo es. El vehículo que
-                  estás manejando ahora mismo es el down payment que te separa del
-                  auto con el que soñás.
+                  Lo que en ocasiones parece fuera de alcance, se vuelve posible
+                  a través de una planificación adecuada. El vehículo que
+                  conduce actualmente representa el pago inicial (down payment)
+                  que lo separa de la unidad que realmente desea.
                 </p>
                 <p className="mt-4 max-w-[46ch] text-[16px] leading-relaxed text-ink-dim">
-                  Entregalo, estructurate en cuotas mensuales accesibles y empezá
-                  a manejar todos los días el auto que querés tener. Cargá los
-                  datos y te devolvemos un rango de tasación el mismo día.
+                  Entregue su usado, configure cuotas mensuales acordes a su
+                  capacidad y comience a disfrutar todos los días del automóvil
+                  que eligió.
                 </p>
+                <div className="mt-7 flex flex-col gap-5">
+                  {(
+                    [
+                      [
+                        "Tasación ágil",
+                        "Ingrese los datos de su vehículo y obtenga un rango de cotización estimado en el transcurso del día.",
+                      ],
+                      [
+                        "Transparencia absoluta",
+                        "El valor tasado se aplica de forma directa sobre la unidad seleccionada, sin complicaciones ni sorpresas.",
+                      ],
+                    ] as const
+                  ).map(([title, body]) => (
+                    <div key={title}>
+                      <div className="text-[14px] font-semibold text-ink">
+                        {title}
+                      </div>
+                      <p className="mt-1 max-w-[42ch] text-[14px] leading-relaxed text-ink-dim">
+                        {body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* right — form */}
@@ -650,15 +754,15 @@ function About() {
     },
     {
       icon: Tag,
-      value: "Precio sin vueltas",
-      label: "Publicado es real",
-      note: "Sin cargos sorpresa ni gastos inventados.",
+      value: "Transparencia absoluta",
+      label: null,
+      note: "El precio publicado es real, definitivo y sin cargos sorpresas ni gastos ocultos.",
     },
     {
       icon: Check,
-      value: "Km reales",
-      label: "Historial verificado",
-      note: "Kilometraje y documentación chequeados uno por uno.",
+      value: "Certificación rigurosa",
+      label: null,
+      note: "Verificamos minuciosamente el kilometraje y la documentación de cada unidad para garantizarle total tranquilidad y confianza absoluta.",
     },
   ];
 
@@ -669,23 +773,23 @@ function About() {
 
         <div className="mt-14 grid gap-14 lg:grid-cols-2 lg:items-center lg:gap-20">
           <div>
-            <p className="max-w-[24ch] text-[clamp(1.75rem,2.6vw,2.5rem)] font-semibold leading-[1.12] tracking-[-0.03em] text-ink">
-              Porque el auto con el que soñás ya está a tu alcance.
-            </p>
-            <p className="mt-7 max-w-[52ch] text-[17px] leading-relaxed text-ink">
-              Estamos acá para que dejes de conformarte con lo que podés pagar hoy
-              y empieces a manejar lo que realmente querés. Te damos opciones
-              reales, transparentes y a tu medida para que el auto de tus sueños
-              deje de ser una idea lejana.
+            <p className="max-w-[52ch] text-[16px] leading-relaxed text-ink-dim">
+              Una selección exclusiva y rigurosa en Maldonado. Elegimos cada
+              unidad bajo estrictos estándares de calidad, exhibiendo cada
+              detalle con total transparencia para que encuentre el vehículo
+              ideal en un entorno sin distracciones. Lo publicado corresponde a
+              nuestra muestra actual; el resto de las alternativas las
+              conversamos de manera personalizada en nuestro espacio o a través
+              de WhatsApp.
             </p>
             <p className="mt-5 max-w-[52ch] text-[16px] leading-relaxed text-ink-dim">
-              Una selección exclusiva y rigurosa en Maldonado. Elegimos cada
-              unidad con un estándar absoluto, exhibiendo cada detalle con total
-              transparencia para que encuentres la tuya en un entorno sin ruido.
+              Nuestro propósito es acercarle opciones reales y estructuradas
+              para que el vehículo que desea esté a su alcance, transformando
+              aspiraciones en realidades tangibles.
             </p>
-            <p className="mt-4 max-w-[52ch] text-[16px] leading-relaxed text-ink-dim">
-              Lo publicado es nuestra muestra actual; el resto lo conversamos de
-              manera personalizada en nuestro espacio o a través de WhatsApp.
+            <p className="mt-7 max-w-[26ch] text-[clamp(1.75rem,2.6vw,2.5rem)] font-semibold leading-[1.12] tracking-[-0.03em] text-ink">
+              Porque el auto con el que sueña ya está a su alcance, diseñado
+              para su ritmo de vida.
             </p>
             <a
               href="#contacto"
@@ -699,7 +803,7 @@ function About() {
           <div className="grid gap-5">
             {metrics.map((m) => (
               <div
-                key={m.label}
+                key={m.value}
                 className="flex items-start gap-5 rounded-3xl bg-surface p-8 shadow-pop"
               >
                 <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-surface-2">
@@ -709,9 +813,11 @@ function About() {
                   <div className="text-[18px] font-semibold tracking-[-0.02em] text-ink">
                     {m.value}
                   </div>
-                  <div className="mt-0.5 text-[13px] font-medium text-ink-dim">
-                    {m.label}
-                  </div>
+                  {m.label && (
+                    <div className="mt-0.5 text-[13px] font-medium text-ink-dim">
+                      {m.label}
+                    </div>
+                  )}
                   <p className="mt-2 text-[14px] leading-relaxed text-ink-faint">
                     {m.note}
                   </p>
@@ -752,11 +858,12 @@ function Contact() {
         {/* left — heading + contact data */}
         <div>
           <h2 className="text-[clamp(2rem,4vw,3rem)] font-semibold leading-[1.05] tracking-[-0.03em] text-ink">
-            Pasá por el local
+            Visite nuestro local
           </h2>
-          <p className="mt-4 max-w-[42ch] text-[16px] leading-relaxed text-ink-dim sm:text-[17px]">
-            Respondemos al toque por WhatsApp. O venís, lo ves y lo probás sin
-            apuro. Estamos en Maldonado.
+          <p className="mt-4 max-w-[46ch] text-[16px] leading-relaxed text-ink-dim sm:text-[17px]">
+            Lo invitamos a visitarnos en nuestro local en Maldonado para conocer
+            y probar las unidades sin apuro, o bien a comunicarse con nosotros a
+            través de WhatsApp para una respuesta ágil y personalizada.
           </p>
 
           <div className="mt-10 flex items-start gap-3.5">
@@ -861,43 +968,6 @@ function Contact() {
 }
 
 /* ------------------------------------------------------------------ *
- *  Footer
- * ------------------------------------------------------------------ */
-function Footer() {
-  return (
-    <footer className="border-t border-hairline px-5 py-12 sm:px-8">
-      <div className="mx-auto flex max-w-[1320px] flex-col items-center gap-6 sm:flex-row sm:justify-between">
-        <div className="flex flex-col items-center gap-3 sm:flex-row">
-          <Wordmark height={15} />
-          <span className="tnum text-[12px] text-ink-faint">
-            © {new Date().getFullYear()} · Maldonado, Uruguay
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
-          {NAV_LINKS.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              className="text-[12px] font-medium text-ink-faint transition-colors hover:text-ink-dim"
-            >
-              {l.label}
-            </a>
-          ))}
-          <a
-            href={SITE.instagramUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[12px] font-medium text-ink-faint transition-colors hover:text-ink-dim"
-          >
-            @{SITE.instagramHandle}
-          </a>
-        </div>
-      </div>
-    </footer>
-  );
-}
-
-/* ------------------------------------------------------------------ *
  *  Page
  * ------------------------------------------------------------------ */
 export default function Page() {
@@ -912,6 +982,7 @@ export default function Page() {
         <Contact />
       </main>
       <Footer />
+      <SalesAgentWidget />
     </div>
   );
 }

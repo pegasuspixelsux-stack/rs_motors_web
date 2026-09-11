@@ -1,11 +1,11 @@
 import Image from "next/image";
-import { ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, ShieldCheck } from "lucide-react";
 import type { Vehicle } from "@/lib/inventory";
 import { STATUS_LABEL } from "@/lib/inventory";
 import { fmtIngreso, fmtInt, fmtUSD } from "@/lib/format";
 import { FINANCE, monthlyPayment } from "@/lib/finance";
-import { waLink } from "@/lib/site";
-import { WhatsappGlyph } from "./whatsapp-glyph";
+import { Wordmark } from "./wordmark";
 
 function StatusPill({ status }: { status: Vehicle["status"] }) {
   const live = status === "recien-ingresado";
@@ -20,13 +20,16 @@ function StatusPill({ status }: { status: Vehicle["status"] }) {
 export function VehicleCard({
   vehicle,
   priority = false,
+  /** ID · ingreso · ubicación footer — internal tracking info. Hidden on the
+   * public site; kept on for dashboard/back-office listings. */
+  showMeta = true,
 }: {
   vehicle: Vehicle;
   priority?: boolean;
+  showMeta?: boolean;
 }) {
   const title = `${vehicle.marca} ${vehicle.modelo}`;
   const cuota = monthlyPayment(vehicle.precioUSD);
-  const message = `Hola RS Motors, me interesa el ${title} ${vehicle.version} ${vehicle.anio} (${vehicle.id}). ¿Sigue disponible?`;
 
   const specs = [
     `${vehicle.anio}`,
@@ -37,7 +40,10 @@ export function VehicleCard({
 
   return (
     <article className="group flex flex-col overflow-hidden rounded-[22px] bg-surface shadow-soft transition-[transform,box-shadow] duration-300 ease-out hover:-translate-y-1 hover:shadow-float">
-      <div className="relative aspect-[4/3] overflow-hidden">
+      <Link
+        href={`/unidades/${vehicle.slug}`}
+        className="relative block aspect-[4/3] overflow-hidden"
+      >
         <Image
           src={vehicle.imagen}
           alt={`${title} ${vehicle.anio}`}
@@ -50,12 +56,23 @@ export function VehicleCard({
         <div className="absolute left-4 top-4">
           <StatusPill status={vehicle.status} />
         </div>
+      </Link>
+
+      {/* branding strip — sits below the photo so it never crops it; the
+          card grows to make room instead of overlaying the image */}
+      <div className="flex shrink-0 items-center justify-center bg-ground py-2.5">
+        <Wordmark height={15} />
       </div>
 
       <div className="flex flex-1 flex-col p-6">
         <div className="flex items-start justify-between gap-3">
           <h3 className="min-h-[2.5em] text-[19px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-            {title}
+            <Link
+              href={`/unidades/${vehicle.slug}`}
+              className="transition-colors hover:text-red-hi"
+            >
+              {title}
+            </Link>
           </h3>
           {vehicle.inspeccionado && (
             <span
@@ -99,19 +116,20 @@ export function VehicleCard({
           </p>
         </div>
 
-        <a
-          href={waLink(message)}
-          target="_blank"
-          rel="noopener noreferrer"
+        <Link
+          href={`/unidades/${vehicle.slug}`}
           className="mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-red px-5 py-3 text-[14px] font-semibold text-white transition-colors hover:bg-red-hi"
         >
-          <WhatsappGlyph size={16} />
-          Consultar
-        </a>
+          Ver ficha
+          <ArrowRight className="size-4" />
+        </Link>
 
-        <p className="tnum mt-4 text-center text-[11px] text-ink-faint">
-          {vehicle.id} · Ingreso {fmtIngreso(vehicle.ingreso)} · {vehicle.ubicacion}
-        </p>
+        {showMeta && (
+          <p className="tnum mt-4 text-center text-[11px] text-ink-faint">
+            {vehicle.id} · Ingreso {fmtIngreso(vehicle.ingreso)} ·{" "}
+            {vehicle.ubicacion}
+          </p>
+        )}
       </div>
     </article>
   );

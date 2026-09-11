@@ -19,15 +19,22 @@ export const SITE = {
 
   instagramHandle: "rsmotors.uy",
   instagramUrl: "https://instagram.com/rsmotors.uy",
+
+  // TODO: confirm real Facebook page and TikTok account.
+  facebookUrl: "https://facebook.com/rsmotors.uy",
+  tiktokUrl: "https://tiktok.com/@rsmotors.uy",
 } as const;
 
 export function waLink(message: string, number: string = SITE.whatsappNumber) {
   return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
 }
 
+// Leading "/" so these resolve correctly from any route (home included) —
+// Nav and Footer are shared across the homepage and vehicle detail pages.
 export const NAV_LINKS = [
-  { href: "#unidades", label: "Unidades" },
-  { href: "#herramientas", label: "Financiación" },
-  { href: "#nosotros", label: "Nosotros" },
-  { href: "#contacto", label: "Contacto" },
+  { href: "/", label: "Inicio" },
+  { href: "/#unidades", label: "Unidades" },
+  { href: "/#herramientas", label: "Financiación" },
+  { href: "/#nosotros", label: "Nosotros" },
+  { href: "/#contacto", label: "Contacto" },
 ] as const;

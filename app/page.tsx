@@ -30,7 +30,7 @@ import { useReducedMotion } from "@/lib/use-reduced-motion";
 import { useReveal, revealClassName } from "@/lib/use-reveal";
 
 const CATEGORIES = getCategories();
-const PER_PAGE = 12;
+const PER_PAGE = 8;
 const EMPTY_VEHICLES: Vehicle[] = [];
 /** Illustrative TNA tiers the visitor can pick in the calculator. */
 const RATE_OPTIONS = [5.97, 6.97, 8.97, 10.97];

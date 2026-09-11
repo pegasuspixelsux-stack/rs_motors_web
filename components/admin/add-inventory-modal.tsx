@@ -1,19 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { X, Check } from "lucide-react";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "@/lib/firebase";
+import { X } from "lucide-react";
 import { SALESMEN } from "@/lib/salesmen";
 import type { NewVehicleInput } from "@/lib/inventory-store";
+import { VehiclePhotoUploader } from "./vehicle-photo-uploader";
 
 /**
  * "Agregar vehículo" modal for the admin inventory tab.
  *
- * The photo grid is real: each slot POSTs to /api/vehicles/photos (sharp
- * watermarking, see lib/watermark.ts), then uploads the watermarked bytes
- * straight to Firebase Storage from the client — the thumbnail shown is
- * the actual hosted, watermarked file's download URL, not a local preview.
+ * The photo intake (interactive car-diagram + per-slot upload) lives in
+ * vehicle-photo-uploader.tsx, shared with edit-inventory-modal.tsx — see
+ * that file for the watermark-API + Firebase Storage upload mechanics.
  *
  * Submitting the form writes a real Firestore document via
  * lib/inventory-store.ts — see that file and lib/firebase.ts for the
@@ -48,21 +46,6 @@ const EMPTY_FORM: FormData = {
   assignedSalesman: SALESMEN[0],
 };
 
-const PHOTO_SLOTS = [
-  { id: 1, label: "Frente (ángulo 3/4 izquierdo)", category: "Frontal · 3 fotos" },
-  { id: 2, label: "Frente (centrado)", category: "Frontal · 3 fotos" },
-  { id: 3, label: "Frente (ángulo 3/4 derecho)", category: "Frontal · 3 fotos" },
-  { id: 4, label: "Trasera (ángulo 3/4 izquierdo)", category: "Trasera · 3 fotos" },
-  { id: 5, label: "Trasera (centrada)", category: "Trasera · 3 fotos" },
-  { id: 6, label: "Trasera (ángulo 3/4 derecho)", category: "Trasera · 3 fotos" },
-  { id: 7, label: "Lateral izquierdo completo", category: "Laterales · 2 fotos" },
-  { id: 8, label: "Lateral derecho completo", category: "Laterales · 2 fotos" },
-  { id: 9, label: "Interior · tablero y kilometraje", category: "Interior · 2 fotos" },
-  { id: 10, label: "Interior · habitáculo general", category: "Interior · 2 fotos" },
-] as const;
-
-const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-
 const field =
   "mt-1.5 w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[14px] text-neutral-900 outline-none transition-colors placeholder:text-neutral-400 focus:border-red focus:bg-white";
 const label = "block text-[12px] font-medium text-neutral-500";
@@ -83,89 +66,29 @@ export function AddInventoryModal({
 }) {
   const [tab, setTab] = useState<TabKey>("manual");
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
-  const [photos, setPhotos] = useState<Record<number, File>>({});
-  const [previews, setPreviews] = useState<Record<number, string>>({});
-  const [uploading, setUploading] = useState<Record<number, boolean>>({});
-  const [photoErrors, setPhotoErrors] = useState<Record<number, string>>({});
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  const [anyUploading, setAnyUploading] = useState(false);
   const [excelFile, setExcelFile] = useState<File | null>(null);
+  // Bumped on close so <VehiclePhotoUploader> remounts fresh next open —
+  // this component stays mounted across open/close (gated by the early
+  // return below), so its own state wouldn't otherwise clear.
+  const [resetKey, setResetKey] = useState(0);
 
   if (!open) return null;
 
-  function revokeAllPreviews() {
-    Object.values(previews).forEach(
-      (url) => url.startsWith("blob:") && URL.revokeObjectURL(url),
-    );
-  }
-
   function reset() {
-    revokeAllPreviews();
     setForm(EMPTY_FORM);
-    setPhotos({});
-    setPreviews({});
-    setUploading({});
-    setPhotoErrors({});
+    setPhotoUrls([]);
+    setAnyUploading(false);
     setExcelFile(null);
     setTab("manual");
-  }
-
-  function setPreview(slotId: number, url: string) {
-    setPreviews((prev) => {
-      if (prev[slotId]?.startsWith("blob:")) URL.revokeObjectURL(prev[slotId]);
-      return { ...prev, [slotId]: url };
-    });
-  }
-
-  async function handlePhotoChange(slotId: number, file: File | undefined) {
-    if (!file) return;
-    if (file.size > MAX_PHOTO_BYTES) {
-      setPhotoErrors((prev) => ({ ...prev, [slotId]: "Supera los 5 MB." }));
-      return;
-    }
-    setPhotoErrors((prev) => {
-      const next = { ...prev };
-      delete next[slotId];
-      return next;
-    });
-    setPhotos((prev) => ({ ...prev, [slotId]: file }));
-    // Instant local preview while the real upload (and watermark) runs.
-    setPreview(slotId, URL.createObjectURL(file));
-
-    setUploading((prev) => ({ ...prev, [slotId]: true }));
-    try {
-      const body = new FormData();
-      body.append("photo", file);
-      const res = await fetch("/api/vehicles/photos", {
-        method: "POST",
-        body,
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json.error ?? "Error al marcar la foto con agua.");
-      }
-      const watermarked = await res.blob();
-      const path = `inventory/${Date.now()}-slot${slotId}-${file.name}`.replace(/\s+/g, "-");
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, watermarked, { contentType: file.type });
-      const downloadURL = await getDownloadURL(storageRef);
-      // Swap the raw local preview for the real, hosted, watermarked file.
-      setPreview(slotId, downloadURL);
-    } catch (err) {
-      setPhotoErrors((prev) => ({
-        ...prev,
-        [slotId]: err instanceof Error ? err.message : "Error al subir la foto.",
-      }));
-    } finally {
-      setUploading((prev) => ({ ...prev, [slotId]: false }));
-    }
+    setResetKey((k) => k + 1);
   }
 
   function close() {
     reset();
     onClose();
   }
-
-  const photoCount = Object.keys(photos).length;
-  const anyUploading = Object.values(uploading).some(Boolean);
 
   return (
     <div
@@ -225,9 +148,6 @@ export function AddInventoryModal({
             onSubmit={(e) => {
               e.preventDefault();
               if (anyUploading) return;
-              const photoUrls = PHOTO_SLOTS.map((s) => previews[s.id]).filter(
-                (url): url is string => Boolean(url) && url.startsWith("http"),
-              );
               onSave({
                 marca: form.brand.trim(),
                 modelo: form.model.trim(),
@@ -375,95 +295,12 @@ export function AddInventoryModal({
               </label>
             </div>
 
-            <div className="space-y-4 border-t border-neutral-100 pt-6">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className={sectionLabel}>
-                  2. Fotos (hasta 10 · máx. 5 MB c/u)
-                </h3>
-                <span className="text-[11px] font-medium text-neutral-500">
-                  {photoCount}/10 cargadas
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {PHOTO_SLOTS.map((slot) => {
-                  const loaded = photos[slot.id];
-                  const preview = previews[slot.id];
-                  const isUploading = uploading[slot.id];
-                  const error = photoErrors[slot.id];
-                  return (
-                    <div
-                      key={slot.id}
-                      className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-3"
-                    >
-                      <div className="relative size-12 shrink-0 overflow-hidden rounded-xl bg-neutral-200">
-                        {preview && (
-                          // eslint-disable-next-line @next/next/no-img-element -- transient local/uploaded preview, not an optimizable static asset
-                          <img
-                            src={preview}
-                            alt=""
-                            className="size-full object-cover"
-                          />
-                        )}
-                        {isUploading && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                            <span className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <span className="inline-block rounded-full bg-neutral-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-neutral-600">
-                          Foto {slot.id}
-                        </span>
-                        <div className="mt-1 truncate text-[13px] font-medium text-neutral-900">
-                          {slot.label}
-                        </div>
-                        <div className="text-[11px] text-neutral-400">
-                          {slot.category}
-                        </div>
-                        {error && (
-                          <div className="mt-0.5 text-[11px] font-medium text-red-hi">
-                            {error}
-                          </div>
-                        )}
-                      </div>
-                      <div className="shrink-0">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          id={`photo-slot-${slot.id}`}
-                          disabled={isUploading}
-                          onChange={(e) =>
-                            handlePhotoChange(slot.id, e.target.files?.[0])
-                          }
-                          className="hidden"
-                        />
-                        <label
-                          htmlFor={`photo-slot-${slot.id}`}
-                          className={
-                            "inline-flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.04em] transition-colors " +
-                            (isUploading
-                              ? "cursor-wait border border-neutral-300 bg-white text-neutral-400"
-                              : loaded
-                                ? "bg-red text-white"
-                                : "border border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-100")
-                          }
-                        >
-                          {!isUploading && loaded && <Check className="size-3" />}
-                          {isUploading ? "Subiendo…" : loaded ? "Cambiar" : "Subir foto"}
-                        </label>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] text-neutral-400">
-                Cada foto se sube y se marca con agua (sharp, centrada, apenas
-                visible) al instante — la miniatura ya muestra el resultado
-                final. Tocar &quot;Subir foto&quot; en el celular abre la
-                cámara directamente.
-              </p>
+            <div className="border-t border-neutral-100 pt-6">
+              <VehiclePhotoUploader
+                key={resetKey}
+                onChange={setPhotoUrls}
+                onUploadingChange={setAnyUploading}
+              />
             </div>
 
             <div className="flex justify-end gap-3 border-t border-neutral-100 pt-6">

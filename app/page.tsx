@@ -392,8 +392,10 @@ function Seleccion() {
           </div>
         )}
 
-        {/* pagination */}
-        {totalPages > 1 && (
+        {/* pagination — always visible once there's at least one result, even
+            on a single page, so the page-number row is a stable fixture at
+            the bottom of the grid rather than popping in/out. */}
+        {filtered.length > 0 && (
           <div className="mt-12 flex items-center justify-between">
             <button
               type="button"
